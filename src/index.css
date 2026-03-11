@@ -118,7 +118,7 @@ body::-webkit-scrollbar {
 .ProseMirror {
   outline: none !important;
   min-height: 100%;
-  padding: 24px 56px 24px 32px;
+  padding: 24px 56px 70vh 32px;
   max-width: 720px;
   margin: 0;
   /* line-height controlled via inline style in Editor.tsx for integer-pixel rendering */

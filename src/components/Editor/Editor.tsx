@@ -88,6 +88,34 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
   const isDirty = useRef(false); // gate: skip DB write if user hasn't changed anything
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Slow down drag-selection: only let ProseMirror see mousemove every MIN_DIST pixels
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    const MIN_DIST = 6;
+    const onDown = (e: MouseEvent) => { dragging = true; lastX = e.clientX; lastY = e.clientY; };
+    const onUp = () => { dragging = false; };
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      if (dx * dx + dy * dy < MIN_DIST * MIN_DIST) { e.stopPropagation(); return; }
+      lastX = e.clientX;
+      lastY = e.clientY;
+    };
+    el.addEventListener("mousedown", onDown);
+    el.addEventListener("mousemove", onMove, true); // capture: fires before ProseMirror
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      el.removeEventListener("mousedown", onDown);
+      el.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;

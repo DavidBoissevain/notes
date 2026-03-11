@@ -18,6 +18,8 @@ const IndentExtension = Extension.create({
   addKeyboardShortcuts() {
     return {
       Tab: () => {
+        if (this.editor.commands.sinkListItem("listItem")) return true;
+        if (this.editor.commands.sinkListItem("taskItem")) return true;
         const { state, dispatch } = this.editor.view;
         const { from, to, empty } = state.selection;
         if (empty) {
@@ -34,6 +36,8 @@ const IndentExtension = Extension.create({
         return true;
       },
       "Shift-Tab": () => {
+        if (this.editor.commands.liftListItem("listItem")) return true;
+        if (this.editor.commands.liftListItem("taskItem")) return true;
         const { state, dispatch } = this.editor.view;
         const { from, to, empty } = state.selection;
         if (empty) {

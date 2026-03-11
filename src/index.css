@@ -109,6 +109,12 @@ body::-webkit-scrollbar {
   background: rgba(0, 0, 0, 0.25);
 }
 
+/* Text selection — neutral grey instead of system blue */
+::selection {
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+}
+
 .ProseMirror {
   outline: none !important;
   min-height: 100%;

@@ -1,6 +1,11 @@
 # Notes App — Working Reference
 
 > Vision, inspiration, and monetization strategy → see [VISION.md](VISION.md)
+> Architecture, render model, and code design choices → see [ARCHITECTURE.md](ARCHITECTURE.md)
+
+**For larger requests:** read [ARCHITECTURE.md](ARCHITECTURE.md) first to understand the current design before proposing changes.
+
+**After any significant change:** update [ARCHITECTURE.md](ARCHITECTURE.md) to reflect the new state — component responsibilities, data flow, and any new design decisions.
 
 ---
 

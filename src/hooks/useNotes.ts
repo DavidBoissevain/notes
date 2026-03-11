@@ -1,24 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
+// Central notes state: loads from SQLite on mount, exposes CRUD + refreshNote for sidebar updates.
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getAllNotes, createNote, deleteNote, type Note } from "../lib/db";
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const noteCountRef = useRef(0); // stable counter for new note names — avoids notes.length in useCallback dep array
 
   useEffect(() => {
     getAllNotes().then((loaded) => {
       setNotes(loaded);
+      noteCountRef.current = loaded.length;
       if (loaded.length > 0) setSelectedId(loaded[0].id);
       setLoading(false);
     });
   }, []);
 
   const newNote = useCallback(async () => {
-    const note = await createNote(`New ${notes.length + 1}`);
+    noteCountRef.current += 1;
+    const note = await createNote(`New ${noteCountRef.current}`);
     setNotes((prev) => [note, ...prev]);
     setSelectedId(note.id);
-  }, [notes.length]);
+  }, []);
 
   const removeNote = useCallback(async (id: string) => {
     await deleteNote(id);
@@ -29,13 +33,17 @@ export function useNotes() {
     });
   }, [selectedId]);
 
+  // Called by Editor after auto-save; updates the sidebar title and updated_at without a DB round-trip.
   const refreshNote = useCallback((id: string, title: string, content: string) => {
     setNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, title, content, updated_at: Date.now() } : n))
     );
   }, []);
 
-  const selectedNote = notes.find((n) => n.id === selectedId) ?? null;
+  const selectedNote = useMemo(
+    () => notes.find((n) => n.id === selectedId) ?? null,
+    [notes, selectedId]
+  );
 
   return { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading };
 }

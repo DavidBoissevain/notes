@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Search, SquarePen, Trash2 } from "lucide-react";
 import type { Note } from "../../lib/db";
 
@@ -15,11 +15,90 @@ function formatTime(ts: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function stripHtml(html: string): string {
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  return div.textContent ?? "";
+
+interface NoteItemProps {
+  note: Note;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number) => void;
 }
+
+// Memoized so only the one changed note re-renders after auto-save, not the whole list.
+const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextMenu }: NoteItemProps) {
+  const preview = useMemo(() => {
+    const div = document.createElement("div");
+    div.innerHTML = note.content;
+    return div.textContent ?? "";
+  }, [note.content]);
+
+  return (
+    <li>
+      <button
+        onClick={() => onSelect(note.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(note.id, e.clientX, e.clientY);
+        }}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          background: isSelected ? "rgba(255, 255, 255, 0.09)" : "transparent",
+          border: "none",
+          borderLeft: isSelected ? "2.5px solid #6366F1" : "2.5px solid transparent",
+          cursor: "pointer",
+          padding: "9px 14px 9px 13.5px",
+          transition: "background 0.1s",
+        }}
+        onMouseEnter={(e) => {
+          if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+        }}
+        onMouseLeave={(e) => {
+          if (!isSelected) e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13.5px",
+            fontWeight: 500,
+            marginBottom: "3px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: isSelected ? "#a5b4fc" : "rgba(255, 255, 255, 0.88)",
+          }}
+        >
+          {note.title || "New note"}
+        </div>
+        <div
+          style={{
+            fontSize: "11.5px",
+            color: "rgba(255, 255, 255, 0.32)",
+            display: "flex",
+            gap: "5px",
+            overflow: "hidden",
+          }}
+        >
+          <span style={{ flexShrink: 0 }}>{formatTime(note.updated_at)}</span>
+          {preview && (
+            <>
+              <span style={{ opacity: 0.6 }}>·</span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {preview}
+              </span>
+            </>
+          )}
+        </div>
+      </button>
+    </li>
+  );
+});
 
 interface NoteListProps {
   notes: Note[];
@@ -31,8 +110,15 @@ interface NoteListProps {
   onSearchChange: (q: string) => void;
 }
 
-export function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQuery, onSearchChange }: NoteListProps) {
+// memo prevents NoteList from re-rendering while the user types in the editor.
+export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQuery, onSearchChange }: NoteListProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Stable function reference so NoteItem memo isn't broken by a new callback on every render.
+  const handleContextMenu = useMemo(
+    () => (id: string, x: number, y: number) => setContextMenu({ id, x, y }),
+    []
+  );
 
   return (
     <aside
@@ -137,77 +223,15 @@ export function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQ
             No results for "{searchQuery}"
           </li>
         )}
-        {notes.map((note) => {
-          const preview = stripHtml(note.content);
-          const isSelected = selectedId === note.id;
-          return (
-            <li key={note.id}>
-              <button
-                onClick={() => onSelect(note.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setContextMenu({ id: note.id, x: e.clientX, y: e.clientY });
-                }}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  background: isSelected ? "rgba(255, 255, 255, 0.09)" : "transparent",
-                  border: "none",
-                  borderLeft: isSelected ? "2.5px solid #6366F1" : "2.5px solid transparent",
-                  cursor: "pointer",
-                  padding: "9px 14px 9px 13.5px",
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "13.5px",
-                    fontWeight: 500,
-                    marginBottom: "3px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: isSelected ? "#a5b4fc" : "rgba(255, 255, 255, 0.88)",
-                  }}
-                >
-                  {note.title || "New note"}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11.5px",
-                    color: "rgba(255, 255, 255, 0.32)",
-                    display: "flex",
-                    gap: "5px",
-                    overflow: "hidden",
-                  }}
-                >
-                  <span style={{ flexShrink: 0 }}>{formatTime(note.updated_at)}</span>
-                  {preview && (
-                    <>
-                      <span style={{ opacity: 0.6 }}>·</span>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {preview}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </button>
-            </li>
-          );
-        })}
+        {notes.map((note) => (
+          <NoteItem
+            key={note.id}
+            note={note}
+            isSelected={selectedId === note.id}
+            onSelect={onSelect}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
       </ul>
 
       {contextMenu && (
@@ -256,4 +280,4 @@ export function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQ
       )}
     </aside>
   );
-}
+});

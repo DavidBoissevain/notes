@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
 import { Editor, FONT_SIZE_DEFAULT } from "./components/Editor/Editor";
 import { useNotes } from "./hooks/useNotes";
-import { useAutoSave } from "./hooks/useAutoSave";
 import { useSearch } from "./hooks/useSearch";
 import { FileText } from "lucide-react";
 
@@ -23,6 +22,7 @@ const resizeEdges: { direction: ResizeDirection; style: React.CSSProperties }[] 
   { direction: "SouthWest", style: { bottom: 0, left: 0, width: RESIZE_SIZE, height: RESIZE_SIZE, cursor: "sw-resize" } },
 ];
 
+// Invisible hit-zones around the window edge; hidden when maximized since resize doesn't apply.
 function ResizeHandles({ maximized }: { maximized: boolean }) {
   if (maximized) return null;
   return (
@@ -38,15 +38,15 @@ function ResizeHandles({ maximized }: { maximized: boolean }) {
   );
 }
 
+// App holds only layout/window state. All editor state lives in Editor; notes state in useNotes.
 export default function App() {
   const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading } = useNotes();
-  const [editorContent, setEditorContent] = useState("");
-  const [editorTitle, setEditorTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [autoFocus, setAutoFocus] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [inset, setInset] = useState({ top: 16, right: 16, bottom: 16, left: 16 });
 
+  // Tracks window position/size to collapse the floating-window border when snapped to a screen edge.
   useEffect(() => {
     const win = getCurrentWindow();
     const EDGE_PX = 16;
@@ -91,30 +91,20 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("editor-font-size", String(fontSize));
   }, [fontSize]);
-  const isDirty = useRef(false);
 
   const { results: searchResults } = useSearch(searchQuery);
-  const displayedNotes = searchResults ?? notes;
-
-  const handleEditorChange = useCallback((content: string, title: string) => {
-    isDirty.current = true;
-    setEditorContent(content);
-    setEditorTitle(title);
-  }, []);
+  // Falls back to the full notes list when search is empty; memoized to keep NoteList props stable.
+  const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
 
   const handleSelectNote = useCallback((id: string) => {
-    isDirty.current = false;
     setAutoFocus(false);
     setSelectedId(id);
   }, [setSelectedId]);
 
   const handleNewNote = useCallback(async () => {
-    isDirty.current = false;
     setAutoFocus(true);
     await newNote();
   }, [newNote]);
-
-  useAutoSave(selectedId, editorTitle, editorContent, refreshNote, isDirty);
 
   const noteContent = selectedNote?.content ?? "";
 
@@ -179,7 +169,7 @@ export default function App() {
               noteId={selectedId}
               title={selectedNote?.title ?? ""}
               content={noteContent}
-              onChange={handleEditorChange}
+              onSaved={refreshNote}
               fontSize={fontSize}
               onFontSizeChange={setFontSize}
               autoFocus={autoFocus}

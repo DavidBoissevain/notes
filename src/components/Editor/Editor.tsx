@@ -6,6 +6,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import { Extension } from "@tiptap/core";
 import { useEffect, useRef, useState } from "react";
 import { FormatToolbar } from "./FormatToolbar";
+import { useAutoSave } from "../../hooks/useAutoSave";
 
 export const FONT_SIZE_STEP = 3;
 export const FONT_SIZE_MIN = 10;
@@ -67,17 +68,20 @@ interface EditorProps {
   noteId: string | null;
   title: string;
   content: string;
-  onChange: (content: string, title: string) => void;
+  onSaved: (id: string, title: string, content: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   autoFocus?: boolean;
 }
 
-export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeChange, autoFocus }: EditorProps) {
-  const lastNoteId = useRef<string | null>(null);
+// Editor owns all local state so typing never re-renders App or NoteList.
+export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeChange, autoFocus }: EditorProps) {
+  const lastNoteId = useRef<string | null>(null); // tracks note switches without triggering re-renders
   const [titleValue, setTitleValue] = useState(title);
-  const titleRef = useRef(title);
-  const bodyRef = useRef(content);
+  const [bodyContent, setBodyContent] = useState(content); // reactive value for useAutoSave dep array
+  const titleRef = useRef(title); // read in TipTap's onUpdate closure without stale capture
+  const bodyRef = useRef(content); // read in title onChange without stale capture
+  const isDirty = useRef(false); // gate: skip DB write if user hasn't changed anything
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -115,24 +119,29 @@ export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeC
     onUpdate({ editor }) {
       const html = editor.getHTML();
       bodyRef.current = html;
-      onChange(html, titleRef.current);
+      isDirty.current = true;
+      setBodyContent(html);
     },
   });
 
   useEffect(() => {
     if (noteId === lastNoteId.current) return;
     lastNoteId.current = noteId;
+    isDirty.current = false;
     titleRef.current = title;
     bodyRef.current = content;
     setTitleValue(title);
-    editor?.commands.setContent(content || "<p></p>", false);
+    setBodyContent(content);
+    editor?.commands.setContent(content || "<p></p>", { emitUpdate: false });
     if (autoFocus) editor?.commands.focus("end");
   }, [noteId]);
+
+  useAutoSave(noteId, titleValue, bodyContent, onSaved, isDirty);
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     titleRef.current = e.target.value;
     setTitleValue(e.target.value);
-    onChange(bodyRef.current, e.target.value);
+    isDirty.current = true;
   }
 
   function handleTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

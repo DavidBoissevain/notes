@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/david/.claude/**)",
+      "Read(//c/Users/david/AppData/Roaming/Claude/**)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''mcpServers'''', ''''no mcpServers key''''\\), indent=2\\)\\)\")",
+      "Bash(npx tauri-plugin-mcp-server:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(find /c/Users/david/.claude/projects/c--Users-david-Documents-VSC-notes/ -name *.json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k\\) for k in d.keys\\(\\)]\")",
+      "Bash(xargs grep:*)",
+      "Bash(grep -r tauri-plugin-mcp-server /c/Users/david/ --include=*.json -l)",
+      "Bash(claude mcp:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebSearch",
+      "mcp__tauri-notes__take_screenshot",
+      "mcp__tauri-notes__execute_js",
+      "mcp__tauri-notes__query_page",
+      "Bash(npm show:*)",
+      "Bash(npm install:*)",
+      "mcp__tauri-notes__click",
+      "mcp__tauri-notes__wait_for",
+      "mcp__tauri-notes__manage_window"
+    ]
+  }
+}

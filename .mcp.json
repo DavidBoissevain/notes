@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tauri-notes": {
+      "command": "node",
+      "args": ["C:/Users/david/AppData/Roaming/npm/node_modules/tauri-plugin-mcp-server/build/index.js"],
+      "env": {
+        "TAURI_MCP_CONNECTION_TYPE": "tcp",
+        "TAURI_MCP_TCP_HOST": "127.0.0.1",
+        "TAURI_MCP_TCP_PORT": "4000"
+      }
+    }
+  }
+}

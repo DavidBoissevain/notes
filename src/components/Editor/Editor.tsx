@@ -1,7 +1,11 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Highlight from "@tiptap/extension-highlight";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
 import { Extension } from "@tiptap/core";
 import { useEffect, useRef, useState } from "react";
+import { FormatToolbar } from "./FormatToolbar";
 
 export const FONT_SIZE_STEP = 3;
 export const FONT_SIZE_MIN = 10;
@@ -13,15 +17,39 @@ const IndentExtension = Extension.create({
   addKeyboardShortcuts() {
     return {
       Tab: () => {
-        this.editor.commands.insertContent("\t");
+        const { state, dispatch } = this.editor.view;
+        const { from, to, empty } = state.selection;
+        if (empty) {
+          this.editor.commands.insertContent("\t");
+          return true;
+        }
+        const tr = state.tr;
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (node.isTextblock) {
+            tr.insertText("\t", tr.mapping.map(pos + 1));
+          }
+        });
+        dispatch(tr);
         return true;
       },
       "Shift-Tab": () => {
         const { state, dispatch } = this.editor.view;
-        const { $from } = state.selection;
-        if ($from.parent.textContent.startsWith("\t")) {
-          dispatch(state.tr.delete($from.start(), $from.start() + 1));
+        const { from, to, empty } = state.selection;
+        if (empty) {
+          const { $from } = state.selection;
+          if ($from.parent.textContent.startsWith("\t")) {
+            dispatch(state.tr.delete($from.start(), $from.start() + 1));
+          }
+          return true;
         }
+        const tr = state.tr;
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (node.isTextblock && node.textContent.startsWith("\t")) {
+            const start = tr.mapping.map(pos + 1);
+            tr.delete(start, start + 1);
+          }
+        });
+        dispatch(tr);
         return true;
       },
       Enter: () => {
@@ -42,9 +70,10 @@ interface EditorProps {
   onChange: (content: string, title: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
+  autoFocus?: boolean;
 }
 
-export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeChange }: EditorProps) {
+export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeChange, autoFocus }: EditorProps) {
   const lastNoteId = useRef<string | null>(null);
   const [titleValue, setTitleValue] = useState(title);
   const titleRef = useRef(title);
@@ -79,9 +108,10 @@ export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeC
   }, [fontSize, onFontSizeChange]);
 
   const editor = useEditor({
-    extensions: [StarterKit, IndentExtension],
+    extensions: [StarterKit, IndentExtension, Highlight, TaskList, TaskItem.configure({ nested: true })],
     content: content || "<p></p>",
     autofocus: false,
+    editorProps: { attributes: { spellcheck: "false" } },
     onUpdate({ editor }) {
       const html = editor.getHTML();
       bodyRef.current = html;
@@ -96,6 +126,7 @@ export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeC
     bodyRef.current = content;
     setTitleValue(title);
     editor?.commands.setContent(content || "<p></p>", false);
+    if (autoFocus) editor?.commands.focus("end");
   }, [noteId]);
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -136,7 +167,7 @@ export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeC
           style={{
             fontSize: "26px",
             fontWeight: 700,
-            fontFamily: "'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif",
+            fontFamily: "'Inter Variable', 'Inter', system-ui, sans-serif",
             border: "none",
             background: "transparent",
             outline: "none",
@@ -191,6 +222,9 @@ export function Editor({ noteId, title, content, onChange, fontSize, onFontSizeC
           {zoomPct}%
         </div>
       </div>
+
+      {/* Format toolbar */}
+      {editor && <FormatToolbar editor={editor} />}
     </div>
   );
 }

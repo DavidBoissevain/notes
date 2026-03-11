@@ -1,9 +1,22 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X } from "lucide-react";
 
 const win = getCurrentWindow();
 
-export function TitleBar() {
+// Segoe MDL2 Assets — Windows native titlebar glyphs
+const MDL2 = {
+  minimize: "\uE921",  // ChromeMinimize
+  maximize: "\uE922",  // ChromeMaximize
+  restore:  "\uE923",  // ChromeRestore
+  close:    "\uE8BB",  // ChromeClose
+};
+
+const mdl2Style: React.CSSProperties = {
+  fontFamily: "'Segoe MDL2 Assets'",
+  fontSize: "10px",
+  lineHeight: 1,
+};
+
+export function TitleBar({ maximized }: { maximized: boolean }) {
   return (
     <div
       data-tauri-drag-region
@@ -21,10 +34,10 @@ export function TitleBar() {
     >
       <div style={{ display: "flex" }}>
         <WindowButton onClick={() => win.minimize()} label="Minimize" hoverColor="rgba(255,255,255,0.1)">
-          <Minus size={13} strokeWidth={1.5} />
+          <span style={mdl2Style}>{MDL2.minimize}</span>
         </WindowButton>
-        <WindowButton onClick={() => win.toggleMaximize()} label="Maximize" hoverColor="rgba(255,255,255,0.1)">
-          <Square size={11} strokeWidth={1.5} />
+        <WindowButton onClick={() => win.toggleMaximize()} label={maximized ? "Restore" : "Maximize"} hoverColor="rgba(255,255,255,0.1)">
+          <span style={mdl2Style}>{maximized ? MDL2.restore : MDL2.maximize}</span>
         </WindowButton>
         <WindowButton
           onClick={() => win.close()}
@@ -33,7 +46,7 @@ export function TitleBar() {
           hoverIconColor="white"
           isClose
         >
-          <X size={13} strokeWidth={1.5} />
+          <span style={mdl2Style}>{MDL2.close}</span>
         </WindowButton>
       </div>
     </div>

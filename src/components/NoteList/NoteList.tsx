@@ -55,7 +55,7 @@ export function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQ
             fontWeight: 600,
             color: "rgba(255, 255, 255, 0.2)",
             letterSpacing: "0.01em",
-            fontFamily: "'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif",
+            fontFamily: "inherit",
           }}
         >
           Notes

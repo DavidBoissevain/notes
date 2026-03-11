@@ -40,7 +40,7 @@
 ## Windows Styling
 
 - `decorations: false` + `transparent: true` + `shadow: false` in tauri.conf.json
-- **Segoe UI Variable** — system font, zero bundle cost
+- **Inter Variable** — app-wide font (bundled via `@fontsource-variable/inter`)
 - Frosted glass via CSS `backdrop-filter: blur(20px)` (not Mica)
 - Lucide Icons (not Fluent)
 - Custom draggable titlebar via `data-tauri-drag-region`

@@ -43,6 +43,7 @@ export default function App() {
   const [editorContent, setEditorContent] = useState("");
   const [editorTitle, setEditorTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [autoFocus, setAutoFocus] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [inset, setInset] = useState({ top: 16, right: 16, bottom: 16, left: 16 });
 
@@ -103,11 +104,13 @@ export default function App() {
 
   const handleSelectNote = useCallback((id: string) => {
     isDirty.current = false;
+    setAutoFocus(false);
     setSelectedId(id);
   }, [setSelectedId]);
 
   const handleNewNote = useCallback(async () => {
     isDirty.current = false;
+    setAutoFocus(true);
     await newNote();
   }, [newNote]);
 
@@ -131,7 +134,7 @@ export default function App() {
       }}
     >
       <ResizeHandles maximized={maximized} />
-      <TitleBar />
+      <TitleBar maximized={maximized} />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <NoteList
@@ -179,6 +182,7 @@ export default function App() {
               onChange={handleEditorChange}
               fontSize={fontSize}
               onFontSizeChange={setFontSize}
+              autoFocus={autoFocus}
             />
           )}
         </main>

@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PanelLeft, PanelLeftClose } from "lucide-react";
+import { SquarePen } from "lucide-react";
 
 const win = getCurrentWindow();
 
@@ -19,12 +19,12 @@ const mdl2Style: React.CSSProperties = {
 
 export function TitleBar({
   maximized,
-  sidebarCollapsed,
-  onToggleSidebar,
+  onNew,
+  noteTitle,
 }: {
   maximized: boolean;
-  sidebarCollapsed: boolean;
-  onToggleSidebar: () => void;
+  onNew: () => void;
+  noteTitle?: string;
 }) {
   return (
     <div
@@ -32,20 +32,21 @@ export function TitleBar({
       style={{
         height: "44px",
         flexShrink: 0,
-        background: "#ffffff",
+        background: "#f0f0f2",
         borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        position: "relative",
         userSelect: "none",
         WebkitUserSelect: "none",
       }}
     >
-      {/* Left: sidebar toggle */}
+      {/* Left: new note */}
       <div style={{ display: "flex", paddingLeft: "12px" }}>
         <button
-          onClick={onToggleSidebar}
-          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={onNew}
+          aria-label="New note"
           style={{
             width: "32px",
             height: "32px",
@@ -68,13 +69,41 @@ export function TitleBar({
             e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
           }}
         >
-          {sidebarCollapsed ? (
-            <PanelLeft size={16} />
-          ) : (
-            <PanelLeftClose size={16} />
-          )}
+          <SquarePen size={15} strokeWidth={1.75} />
         </button>
       </div>
+
+      {/* Center: note title — absolutely positioned for true center */}
+      <div
+        data-tauri-drag-region
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -42%)",
+          pointerEvents: "none",
+          maxWidth: "40%",
+          overflow: "hidden",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "12px",
+            fontWeight: 400,
+            color: "rgba(0, 0, 0, 0.25)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "inline-block",
+            maxWidth: "100%",
+          }}
+        >
+          {noteTitle || ""}
+        </span>
+      </div>
+
+      {/* Spacer to push window controls to the right */}
+      <div style={{ flex: 1 }} />
 
       {/* Right: window controls */}
       <div style={{ display: "flex" }}>

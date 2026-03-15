@@ -34,9 +34,9 @@ export function useNotes() {
   }, [selectedId]);
 
   // Called by Editor after auto-save; updates the sidebar title and updated_at without a DB round-trip.
-  const refreshNote = useCallback((id: string, title: string, content: string) => {
+  const refreshNote = useCallback((id: string, content: string) => {
     setNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, title, content, updated_at: Date.now() } : n))
+      prev.map((n) => (n.id === id ? { ...n, content, updated_at: Date.now() } : n))
     );
   }, []);
 

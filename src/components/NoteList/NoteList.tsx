@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { Search, SquarePen, Trash2 } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import type { Note } from "../../lib/db";
 
 function formatTime(ts: number): string {
@@ -103,14 +103,13 @@ interface NoteListProps {
   notes: Note[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onNew: () => void;
   onDelete: (id: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   style?: React.CSSProperties;
 }
 
-export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, onNew, onDelete, searchQuery, onSearchChange, style }: NoteListProps) {
+export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, onDelete, searchQuery, onSearchChange, style }: NoteListProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const handleContextMenu = useMemo(
@@ -130,7 +129,6 @@ export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, on
           padding: "10px 10px 8px 16px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
         }}
       >
         <span
@@ -144,32 +142,6 @@ export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, on
         >
           Notes
         </span>
-        <button
-          onClick={onNew}
-          aria-label="New note"
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "5px 6px",
-            borderRadius: "7px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "rgba(0, 0, 0, 0.35)",
-            transition: "background 0.12s, color 0.12s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-            e.currentTarget.style.color = "rgba(0, 0, 0, 0.7)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
-            e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
-          }}
-        >
-          <SquarePen size={15} strokeWidth={1.75} />
-        </button>
       </div>
 
       {/* Search */}

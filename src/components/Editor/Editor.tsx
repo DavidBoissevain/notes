@@ -22,10 +22,10 @@ import {
   Highlighter,
   Link as LinkIcon,
 } from "lucide-react";
-import { FormatToolbar } from "./FormatToolbar";
+
 import { useAutoSave } from "../../hooks/useAutoSave";
 
-export const FONT_SIZE_STEP = 3;
+export const FONT_SIZE_STEP = 1;
 export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 120;
 export const FONT_SIZE_DEFAULT = 15.5;
@@ -241,10 +241,11 @@ const IndentExtension = Extension.create({
 interface EditorProps {
   noteId: string | null;
   content: string;
-  onSaved: (id: string, title: string, content: string) => void;
+  onSaved: (id: string, content: string) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   autoFocus?: boolean;
+  onEditorReady?: (editor: ReturnType<typeof useEditor> | null) => void;
 }
 
 // ---------- Line numbers (visual-line aware) ----------
@@ -346,14 +347,6 @@ function LineNumbers({
   );
 }
 
-function extractTitle(html: string): string {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  const text = tmp.textContent?.trim() || "";
-  const firstLine = text.split("\n")[0].trim();
-  return firstLine.slice(0, 100) || "Untitled";
-}
-
 // Editor owns all local state so typing never re-renders App or NoteList.
 export function Editor({
   noteId,
@@ -362,6 +355,7 @@ export function Editor({
   fontSize,
   onFontSizeChange,
   autoFocus,
+  onEditorReady,
 }: EditorProps) {
   const lastNoteId = useRef<string | null>(null);
   const [bodyContent, setBodyContent] = useState(content);
@@ -485,6 +479,12 @@ export function Editor({
     },
   });
 
+  // Expose editor instance to parent for bottom bar
+  useEffect(() => {
+    onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+  }, [editor]);
+
   useEffect(() => {
     if (noteId === lastNoteId.current) return;
     lastNoteId.current = noteId;
@@ -494,8 +494,7 @@ export function Editor({
     if (autoFocus) editor?.commands.focus("end");
   }, [noteId]);
 
-  const derivedTitle = extractTitle(bodyContent);
-  useAutoSave(noteId, derivedTitle, bodyContent, onSaved, isDirty);
+  useAutoSave(noteId, bodyContent, onSaved, isDirty);
 
   // Character / word count (only re-renders when counts change)
   const counts = useEditorState({
@@ -703,8 +702,6 @@ export function Editor({
         </div>
       </div>
 
-      {/* Format toolbar */}
-      {editor && <FormatToolbar editor={editor} />}
     </div>
   );
 }

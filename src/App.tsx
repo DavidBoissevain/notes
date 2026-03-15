@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Editor as TiptapEditor } from "@tiptap/react";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
 import { Editor, FONT_SIZE_DEFAULT } from "./components/Editor/Editor";
+import { FormatToolbar } from "./components/Editor/FormatToolbar";
 import { useNotes } from "./hooks/useNotes";
 import { useSearch } from "./hooks/useSearch";
-import { FileText } from "lucide-react";
+import { FileText, PanelLeft, PanelLeftClose } from "lucide-react";
 
 const RESIZE_SIZE = 12;
-const SIDEBAR_MIN = 160;
+const SIDEBAR_MIN = 100;
 const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 220;
 
@@ -79,31 +81,35 @@ export default function App() {
 
   // --- Sidebar resize drag ---
   const containerRef = useRef<HTMLDivElement>(null);
-  const handleSidebarResize = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = sidebarWidth;
-      const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0;
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
 
-      const onMove = (ev: MouseEvent) => {
-        const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + (ev.clientX - startX)));
-        setSidebarWidth(newW);
-      };
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      void containerLeft;
-    },
-    [sidebarWidth],
-  );
+  const handleSidebarResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidthRef.current;
+
+    // Disable CSS transition during drag for instant response
+    const sidebar = document.querySelector(".note-list-sidebar") as HTMLElement | null;
+    if (sidebar) sidebar.style.transition = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + (ev.clientX - startX)));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      // Re-enable transition for collapse/expand animation
+      if (sidebar) sidebar.style.transition = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
 
   const { results: searchResults } = useSearch(searchQuery);
   const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
@@ -120,6 +126,8 @@ export default function App() {
 
   const noteContent = selectedNote?.content ?? "";
 
+  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
+
   return (
     <div
       style={{
@@ -133,8 +141,8 @@ export default function App() {
       <ResizeHandles maximized={maximized} />
       <TitleBar
         maximized={maximized}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={toggleSidebar}
+        onNew={handleNewNote}
+        noteTitle={selectedNote?.title}
       />
 
       <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -142,7 +150,6 @@ export default function App() {
           notes={displayedNotes}
           selectedId={selectedId}
           onSelect={handleSelectNote}
-          onNew={handleNewNote}
           onDelete={removeNote}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -192,9 +199,58 @@ export default function App() {
               fontSize={fontSize}
               onFontSizeChange={setFontSize}
               autoFocus={autoFocus}
+              onEditorReady={setEditorInstance}
             />
           )}
         </main>
+      </div>
+
+      {/* Full-width bottom bar: toggle + format toolbar */}
+      <div style={{ display: "flex", flexShrink: 0 }}>
+        <div
+          style={{
+            width: sidebarCollapsed ? 41 : sidebarWidth,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            background: sidebarCollapsed ? "#f5f5f5" : "#f8f8f8",
+            borderRight: "1px solid #e5e5e5",
+            transition: "width 0.2s ease, background 0.2s ease",
+          }}
+        >
+          <button
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            style={{
+              width: 40,
+              height: 44,
+              flexShrink: 0,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(0, 0, 0, 0.35)",
+              transition: "background 0.1s, color 0.1s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
+              e.currentTarget.style.color = "rgba(0, 0, 0, 0.7)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
+            }}
+          >
+            {sidebarCollapsed ? <PanelLeft size={15} /> : <PanelLeftClose size={15} />}
+          </button>
+        </div>
+        {editorInstance ? (
+          <FormatToolbar editor={editorInstance} />
+        ) : (
+          <div style={{ flex: 1, height: 44, background: "#ffffff" }} />
+        )}
       </div>
     </div>
   );

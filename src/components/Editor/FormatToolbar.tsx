@@ -189,9 +189,10 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
     <div
       ref={toolbarRef}
       style={{
+        flex: 1,
         height: 44,
         background: "#ffffff",
-        borderTop: "1px solid rgba(0,0,0,0.07)",
+        borderTop: "1px solid #e8e8e8",
         display: "flex",
         alignItems: "center",
         padding: "0 16px",

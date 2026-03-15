@@ -57,6 +57,15 @@ export async function updateNote(id: string, title: string, content: string): Pr
   );
 }
 
+export async function updateNoteContent(id: string, content: string): Promise<void> {
+  const db = await getDb();
+  const now = Date.now();
+  await db.execute(
+    "UPDATE notes SET content = $1, updated_at = $2 WHERE id = $3",
+    [content, now, id]
+  );
+}
+
 export async function deleteNote(id: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM notes WHERE id = $1", [id]);

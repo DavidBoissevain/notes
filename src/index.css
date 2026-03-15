@@ -137,9 +137,9 @@ body::-webkit-scrollbar {
   opacity: 0.9;
 }
 
-/* Text selection — neutral grey instead of system blue */
+/* Text selection — opaque grey so overlapping lines don't create dark seams */
 ::selection {
-  background: rgba(0, 0, 0, 0.2);
+  background: #d5d5d5;
   color: inherit;
 }
 
@@ -161,8 +161,8 @@ body::-webkit-scrollbar {
 .line-gutter {
   width: 40px;
   flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.035);
-  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  background: #f5f5f5;
+  border-right: 1px solid #e5e5e5;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -263,15 +263,17 @@ body::-webkit-scrollbar {
 }
 
 /* Tailwind preflight resets list-style to none — restore inside editor */
-.ProseMirror ul:not([data-type="taskList"]) {
-  list-style-type: disc;
-}
+/* Nested bullet styles: disc → circle → square */
+.ProseMirror ul:not([data-type="taskList"]) { list-style-type: disc; }
+.ProseMirror ul:not([data-type="taskList"]) ul { list-style-type: circle; }
+.ProseMirror ul:not([data-type="taskList"]) ul ul { list-style-type: square; }
 
-.ProseMirror ol {
-  list-style-type: decimal;
-}
+/* Nested number styles: decimal → lower-alpha → lower-roman */
+.ProseMirror ol { list-style-type: decimal; }
+.ProseMirror ol ol { list-style-type: lower-alpha; }
+.ProseMirror ol ol ol { list-style-type: lower-roman; }
 
-.ProseMirror li { margin-bottom: 0.25em; }
+.ProseMirror li { margin-bottom: 0; }
 
 .ProseMirror ul[data-type="taskList"] {
   list-style: none;
@@ -280,16 +282,14 @@ body::-webkit-scrollbar {
 
 .ProseMirror ul[data-type="taskList"] li {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5em;
+  align-items: center;
+  gap: 0.4em;
 }
 
 .ProseMirror ul[data-type="taskList"] li > label {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  /* nudge down slightly to align with text optical/x-height center */
-  margin-top: 0.3em;
 }
 
 .ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"] {

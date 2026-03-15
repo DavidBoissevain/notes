@@ -20,14 +20,6 @@ async function initSchema(db: Database) {
       updated_at INTEGER NOT NULL
     )
   `);
-  await db.execute(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
-      title,
-      content,
-      content=notes,
-      content_rowid=rowid
-    )
-  `);
 }
 
 export interface Note {
@@ -72,12 +64,11 @@ export async function deleteNote(id: string): Promise<void> {
 
 export async function searchNotes(query: string): Promise<Note[]> {
   const db = await getDb();
+  const pattern = `%${query}%`;
   return db.select<Note[]>(
-    `SELECT n.id, n.title, n.content, n.created_at, n.updated_at
-     FROM notes n
-     JOIN notes_fts f ON n.rowid = f.rowid
-     WHERE notes_fts MATCH $1
-     ORDER BY rank`,
-    [query]
+    `SELECT id, title, content, created_at, updated_at FROM notes
+     WHERE title LIKE $1 OR content LIKE $1
+     ORDER BY updated_at DESC`,
+    [pattern]
   );
 }

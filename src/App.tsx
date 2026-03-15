@@ -167,7 +167,6 @@ export default function App() {
           ) : (
             <Editor
               noteId={selectedId}
-              title={selectedNote?.title ?? ""}
               content={noteContent}
               onSaved={refreshNote}
               fontSize={fontSize}

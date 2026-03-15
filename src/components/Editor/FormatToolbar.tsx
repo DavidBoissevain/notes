@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { useEditorState } from "@tiptap/react";
 import {
   ChevronDown,
   SquareCheck,
@@ -90,13 +91,6 @@ function ToolButton({
   );
 }
 
-function getHeadingLabel(editor: Editor): string {
-  if (editor.isActive("heading", { level: 1 })) return "H1";
-  if (editor.isActive("heading", { level: 2 })) return "H2";
-  if (editor.isActive("heading", { level: 3 })) return "H3";
-  return "Text";
-}
-
 const DROPDOWN_PANEL: React.CSSProperties = {
   position: "absolute",
   bottom: "calc(100% + 6px)",
@@ -159,6 +153,23 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
   );
   const toolbarRef = useRef<HTMLDivElement>(null);
 
+  // Only re-render when active states actually change (not on every keystroke)
+  const state = useEditorState({
+    editor,
+    selector: (ctx) => ({
+      isBold: ctx.editor.isActive("bold"),
+      isItalic: ctx.editor.isActive("italic"),
+      isHighlight: ctx.editor.isActive("highlight"),
+      isTaskList: ctx.editor.isActive("taskList"),
+      isBulletList: ctx.editor.isActive("bulletList"),
+      isOrderedList: ctx.editor.isActive("orderedList"),
+      headingLevel:
+        [1, 2, 3].find((l) =>
+          ctx.editor.isActive("heading", { level: l })
+        ) ?? 0,
+    }),
+  });
+
   useEffect(() => {
     if (!openDropdown) return;
     const handler = (e: MouseEvent) => {
@@ -170,9 +181,9 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, [openDropdown]);
 
-  const headingLabel = getHeadingLabel(editor);
-  const isListActive =
-    editor.isActive("bulletList") || editor.isActive("orderedList");
+  const headingLabel =
+    state.headingLevel > 0 ? `H${state.headingLevel}` : "Text";
+  const isListActive = state.isBulletList || state.isOrderedList;
 
   return (
     <div
@@ -192,7 +203,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
       {/* Heading dropdown */}
       <div style={{ position: "relative" }}>
         <ToolButton
-          isActive={headingLabel !== "Text"}
+          isActive={state.headingLevel > 0}
           onClick={() =>
             setOpenDropdown(openDropdown === "heading" ? null : "heading")
           }
@@ -208,7 +219,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         {openDropdown === "heading" && (
           <div style={DROPDOWN_PANEL}>
             <DropdownItem
-              isActive={!editor.isActive("heading")}
+              isActive={state.headingLevel === 0}
               onClick={() => {
                 editor.chain().focus().setParagraph().run();
                 setOpenDropdown(null);
@@ -219,7 +230,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
             {([1, 2, 3] as const).map((level) => (
               <DropdownItem
                 key={level}
-                isActive={editor.isActive("heading", { level })}
+                isActive={state.headingLevel === level}
                 onClick={() => {
                   editor.chain().focus().toggleHeading({ level }).run();
                   setOpenDropdown(null);
@@ -246,7 +257,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {/* Task list */}
       <ToolButton
-        isActive={editor.isActive("taskList")}
+        isActive={state.isTaskList}
         onClick={() => editor.chain().focus().toggleTaskList().run()}
         title="Task list"
       >
@@ -270,7 +281,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         {openDropdown === "list" && (
           <div style={DROPDOWN_PANEL}>
             <DropdownItem
-              isActive={editor.isActive("bulletList")}
+              isActive={state.isBulletList}
               onClick={() => {
                 editor.chain().focus().toggleBulletList().run();
                 setOpenDropdown(null);
@@ -280,7 +291,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
               <span>Bullet list</span>
             </DropdownItem>
             <DropdownItem
-              isActive={editor.isActive("orderedList")}
+              isActive={state.isOrderedList}
               onClick={() => {
                 editor.chain().focus().toggleOrderedList().run();
                 setOpenDropdown(null);
@@ -297,7 +308,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {/* Bold */}
       <ToolButton
-        isActive={editor.isActive("bold")}
+        isActive={state.isBold}
         onClick={() => editor.chain().focus().toggleBold().run()}
         title="Bold"
       >
@@ -306,7 +317,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {/* Italic */}
       <ToolButton
-        isActive={editor.isActive("italic")}
+        isActive={state.isItalic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         title="Italic"
       >
@@ -317,7 +328,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {/* Highlight */}
       <ToolButton
-        isActive={editor.isActive("highlight")}
+        isActive={state.isHighlight}
         onClick={() => editor.chain().focus().toggleHighlight().run()}
         title="Highlight"
       >

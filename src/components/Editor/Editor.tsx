@@ -1,10 +1,29 @@
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import Link from "@tiptap/extension-link";
+import { Typography } from "@tiptap/extension-typography";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { CharacterCount } from "@tiptap/extension-character-count";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { all, createLowlight } from "lowlight";
 import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { dropPoint } from "@tiptap/pm/transform";
 import { useEffect, useRef, useState } from "react";
+import {
+  Bold,
+  Italic,
+  Strikethrough,
+  Code,
+  Highlighter,
+  Link as LinkIcon,
+} from "lucide-react";
 import { FormatToolbar } from "./FormatToolbar";
 import { useAutoSave } from "../../hooks/useAutoSave";
 
@@ -13,6 +32,158 @@ export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 120;
 export const FONT_SIZE_DEFAULT = 15.5;
 
+const lowlight = createLowlight(all);
+
+// ---------- Current-line highlight extension ----------
+const currentLineKey = new PluginKey("currentLine");
+const CurrentLineExtension = Extension.create({
+  name: "currentLine",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: currentLineKey,
+        state: {
+          init(_, state) {
+            return getLineDecoration(state);
+          },
+          apply(tr, old, _, newState) {
+            if (tr.docChanged || tr.selectionSet) return getLineDecoration(newState);
+            return old;
+          },
+        },
+        props: {
+          decorations(state) {
+            return currentLineKey.getState(state);
+          },
+        },
+      }),
+    ];
+  },
+});
+
+function getLineDecoration(state: any): DecorationSet {
+  const { selection } = state;
+  if (!selection.empty) return DecorationSet.empty;
+  const $pos = selection.$head;
+  // Find the top-level node (direct child of doc)
+  const depth = $pos.depth;
+  if (depth === 0) return DecorationSet.empty;
+  const start = $pos.start(1);
+  const end = $pos.end(1);
+  return DecorationSet.create(state.doc, [
+    Decoration.node(start - 1, end + 1, { class: "current-line" }),
+  ]);
+}
+
+// ---------- Drag-and-drop text extension ----------
+// Implements text-selection drag-and-drop via a ProseMirror Plugin,
+// which guarantees the handlers are properly registered in PM's event chain.
+const DragTextExtension = Extension.create({
+  name: "dragText",
+  addProseMirrorPlugins() {
+    let dragState: { from: number; to: number; slice: any } | null = null;
+
+    const cleanup = (view: any) => {
+      dragState = null;
+      view.dom.draggable = false;
+      view.dragging = null;
+    };
+
+    return [
+      new Plugin({
+        props: {
+          handleDOMEvents: {
+            mousedown(view, event) {
+              if (event.button !== 0) return false;
+              const { state } = view;
+              const { selection } = state;
+              if (selection.empty || !(selection instanceof TextSelection))
+                return false;
+              const pos = view.posAtCoords({
+                left: event.clientX,
+                top: event.clientY,
+              });
+              if (!pos) return false;
+              const { from, to } = selection;
+              if (pos.pos < from || pos.pos > to) return false;
+              // Click is inside selection — prepare for drag
+              dragState = { from, to, slice: selection.content() };
+              view.dom.draggable = true;
+              return true; // prevent ProseMirror from collapsing the selection
+            },
+            dragstart(view, event) {
+              if (!dragState || !event.dataTransfer) return false;
+              const { dom, text } = (view as any).serializeForClipboard(
+                dragState.slice,
+              );
+              event.dataTransfer.clearData();
+              event.dataTransfer.setData(
+                "text/html",
+                (dom as HTMLElement).innerHTML,
+              );
+              event.dataTransfer.setData("text/plain", text);
+              event.dataTransfer.effectAllowed = "move";
+              (view as any).dragging = {
+                slice: dragState.slice,
+                move: true,
+              };
+              return true;
+            },
+            dragover(_view, event) {
+              if (!dragState) return false;
+              event.preventDefault();
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+              return true;
+            },
+            drop(view, event) {
+              if (!dragState) return false;
+              event.preventDefault();
+              const eventPos = view.posAtCoords({
+                left: event.clientX,
+                top: event.clientY,
+              });
+              if (!eventPos) {
+                cleanup(view);
+                return true;
+              }
+              const { from, to, slice } = dragState;
+              let insertPos = dropPoint(view.state.doc, eventPos.pos, slice);
+              if (insertPos == null) insertPos = eventPos.pos;
+              const tr = view.state.tr;
+              tr.delete(from, to);
+              const mappedPos = tr.mapping.map(insertPos);
+              tr.replaceRange(mappedPos, mappedPos, slice);
+              tr.setMeta("uiEvent", "drop");
+              view.dispatch(tr);
+              cleanup(view);
+              return true;
+            },
+            dragend(view) {
+              cleanup(view);
+              return false;
+            },
+            mouseup(view, event) {
+              if (!dragState) return false;
+              // No drag happened — collapse selection at click position
+              const pos = view.posAtCoords({
+                left: event.clientX,
+                top: event.clientY,
+              });
+              if (pos) {
+                const sel = TextSelection.create(view.state.doc, pos.pos);
+                view.dispatch(view.state.tr.setSelection(sel));
+              }
+              cleanup(view);
+              return false;
+            },
+          },
+        },
+      }),
+    ];
+  },
+});
+
+// ---------- Indent extension ----------
 const IndentExtension = Extension.create({
   name: "indent",
   addKeyboardShortcuts() {
@@ -70,7 +241,6 @@ const IndentExtension = Extension.create({
 
 interface EditorProps {
   noteId: string | null;
-  title: string;
   content: string;
   onSaved: (id: string, title: string, content: string) => void;
   fontSize: number;
@@ -78,14 +248,26 @@ interface EditorProps {
   autoFocus?: boolean;
 }
 
+function extractTitle(html: string): string {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  const text = tmp.textContent?.trim() || "";
+  const firstLine = text.split("\n")[0].trim();
+  return firstLine.slice(0, 100) || "Untitled";
+}
+
 // Editor owns all local state so typing never re-renders App or NoteList.
-export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeChange, autoFocus }: EditorProps) {
-  const lastNoteId = useRef<string | null>(null); // tracks note switches without triggering re-renders
-  const [titleValue, setTitleValue] = useState(title);
-  const [bodyContent, setBodyContent] = useState(content); // reactive value for useAutoSave dep array
-  const titleRef = useRef(title); // read in TipTap's onUpdate closure without stale capture
-  const bodyRef = useRef(content); // read in title onChange without stale capture
-  const isDirty = useRef(false); // gate: skip DB write if user hasn't changed anything
+export function Editor({
+  noteId,
+  content,
+  onSaved,
+  fontSize,
+  onFontSizeChange,
+  autoFocus,
+}: EditorProps) {
+  const lastNoteId = useRef<string | null>(null);
+  const [bodyContent, setBodyContent] = useState(content);
+  const isDirty = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Slow down drag-selection: only let ProseMirror see mousemove every MIN_DIST pixels
@@ -96,18 +278,35 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
     let lastX = 0;
     let lastY = 0;
     const MIN_DIST = 6;
-    const onDown = (e: MouseEvent) => { dragging = true; lastX = e.clientX; lastY = e.clientY; };
-    const onUp = () => { dragging = false; };
+
+    const onDown = (e: MouseEvent) => {
+      // If the ProseMirror element is draggable, our DragTextExtension has
+      // claimed this mousedown for a text-drag. Don't throttle mousemove
+      // or stopPropagation will swallow the events the browser needs to
+      // detect the HTML5 drag gesture.
+      const pm = el.querySelector(".ProseMirror") as HTMLElement | null;
+      if (pm?.draggable) return;
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    };
+    const onUp = () => {
+      dragging = false;
+    };
     const onMove = (e: MouseEvent) => {
       if (!dragging) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
-      if (dx * dx + dy * dy < MIN_DIST * MIN_DIST) { e.stopPropagation(); return; }
+      if (dx * dx + dy * dy < MIN_DIST * MIN_DIST) {
+        e.stopPropagation();
+        return;
+      }
       lastX = e.clientX;
       lastY = e.clientY;
     };
+
     el.addEventListener("mousedown", onDown);
-    el.addEventListener("mousemove", onMove, true); // capture: fires before ProseMirror
+    el.addEventListener("mousemove", onMove, true);
     window.addEventListener("mouseup", onUp);
     return () => {
       el.removeEventListener("mousedown", onDown);
@@ -120,9 +319,23 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
     const el = scrollRef.current;
     if (!el) return;
     const wheelHandler = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
       e.preventDefault();
-      onFontSizeChange(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, fontSize + (e.deltaY > 0 ? -FONT_SIZE_STEP : FONT_SIZE_STEP))));
+      if (e.ctrlKey) {
+        onFontSizeChange(
+          Math.min(
+            FONT_SIZE_MAX,
+            Math.max(
+              FONT_SIZE_MIN,
+              fontSize + (e.deltaY > 0 ? -FONT_SIZE_STEP : FONT_SIZE_STEP),
+            ),
+          ),
+        );
+        return;
+      }
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 20;
+      else if (e.deltaMode === 2) delta *= el.clientHeight;
+      el.scrollBy({ top: delta, behavior: "instant" });
     };
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
@@ -144,13 +357,32 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
   }, [fontSize, onFontSizeChange]);
 
   const editor = useEditor({
-    extensions: [StarterKit, IndentExtension, Highlight, TaskList, TaskItem.configure({ nested: true })],
+    extensions: [
+      StarterKit.configure({
+        dropcursor: { color: "#1c1c1e", width: 2, class: "drop-cursor" },
+        codeBlock: false, // replaced by CodeBlockLowlight
+      }),
+      CodeBlockLowlight.configure({ lowlight }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: "https",
+      }),
+      Typography,
+      Placeholder.configure({ placeholder: "Write something…" }),
+      CharacterCount,
+      DragTextExtension,
+      CurrentLineExtension,
+      IndentExtension,
+      Highlight,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+    ],
     content: content || "<p></p>",
     autofocus: false,
     editorProps: { attributes: { spellcheck: "false" } },
     onUpdate({ editor }) {
       const html = editor.getHTML();
-      bodyRef.current = html;
       isDirty.current = true;
       setBodyContent(html);
     },
@@ -160,28 +392,22 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
     if (noteId === lastNoteId.current) return;
     lastNoteId.current = noteId;
     isDirty.current = false;
-    titleRef.current = title;
-    bodyRef.current = content;
-    setTitleValue(title);
     setBodyContent(content);
     editor?.commands.setContent(content || "<p></p>", { emitUpdate: false });
     if (autoFocus) editor?.commands.focus("end");
   }, [noteId]);
 
-  useAutoSave(noteId, titleValue, bodyContent, onSaved, isDirty);
+  const derivedTitle = extractTitle(bodyContent);
+  useAutoSave(noteId, derivedTitle, bodyContent, onSaved, isDirty);
 
-  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    titleRef.current = e.target.value;
-    setTitleValue(e.target.value);
-    isDirty.current = true;
-  }
-
-  function handleTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      editor?.commands.focus("start");
-    }
-  }
+  // Character / word count (only re-renders when counts change)
+  const counts = useEditorState({
+    editor,
+    selector: (ctx) => ({
+      words: ctx.editor.storage.characterCount.words() as number,
+      chars: ctx.editor.storage.characterCount.characters() as number,
+    }),
+  });
 
   const zoomPct = Math.round((fontSize / FONT_SIZE_DEFAULT) * 10) * 10;
   const [zoomVisible, setZoomVisible] = useState(false);
@@ -189,78 +415,160 @@ export function Editor({ noteId, title, content, onSaved, fontSize, onFontSizeCh
   const isFirstRender = useRef(true);
 
   useEffect(() => {
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setZoomVisible(true);
     if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
     zoomTimerRef.current = setTimeout(() => setZoomVisible(false), 1500);
   }, [fontSize]);
 
-  return (
-    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      {/* Title */}
-      <div style={{ flexShrink: 0, padding: "32px 56px 0 32px", maxWidth: "720px", margin: "0", width: "100%", boxSizing: "border-box" }}>
-        <input
-          type="text"
-          value={titleValue}
-          onChange={handleTitleChange}
-          onKeyDown={handleTitleKeyDown}
-          placeholder="Untitled"
-          style={{
-            fontSize: "26px",
-            fontWeight: 700,
-            fontFamily: "'Inter Variable', 'Inter', system-ui, sans-serif",
-            border: "none",
-            background: "transparent",
-            outline: "none",
-            width: "100%",
-            color: "#1c1c1e",
-            letterSpacing: "-0.02em",
-            lineHeight: 1.25,
-            padding: 0,
-            boxSizing: "border-box",
-          }}
-        />
-        <div
-          style={{
-            height: "1px",
-            background: "rgba(0, 0, 0, 0.07)",
-            marginTop: "16px",
-          }}
-        />
-      </div>
+  const setLink = () => {
+    if (!editor) return;
+    const prev = editor.getAttributes("link").href;
+    const url = window.prompt("URL", prev);
+    if (url === null) return;
+    if (url === "") {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+  };
 
+  return (
+    <div
+      style={{
+        flex: 1,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {/* Body */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div
           ref={scrollRef}
           className="editor-scroll"
-          style={{ height: "100%", cursor: "text", overflowY: "auto", overflowX: "hidden", fontSize: `${fontSize}px`, lineHeight: `${Math.round(fontSize * 1.35)}px` }}
+          style={{
+            height: "100%",
+            cursor: "text",
+            overflowY: "auto",
+            overflowX: "hidden",
+            fontSize: `${fontSize}px`,
+            lineHeight: `${Math.round(fontSize * 1.35)}px`,
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) editor?.commands.focus("end");
           }}
         >
+          {/* Bubble menu */}
+          {editor && (
+            <BubbleMenu className="bubble-menu" editor={editor}>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().toggleBold().run();
+                }}
+                className={editor.isActive("bold") ? "is-active" : ""}
+              >
+                <Bold size={14} />
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().toggleItalic().run();
+                }}
+                className={editor.isActive("italic") ? "is-active" : ""}
+              >
+                <Italic size={14} />
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().toggleStrike().run();
+                }}
+                className={editor.isActive("strike") ? "is-active" : ""}
+              >
+                <Strikethrough size={14} />
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().toggleCode().run();
+                }}
+                className={editor.isActive("code") ? "is-active" : ""}
+              >
+                <Code size={14} />
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().toggleHighlight().run();
+                }}
+                className={editor.isActive("highlight") ? "is-active" : ""}
+              >
+                <Highlighter size={14} />
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setLink();
+                }}
+                className={editor.isActive("link") ? "is-active" : ""}
+              >
+                <LinkIcon size={14} />
+              </button>
+            </BubbleMenu>
+          )}
+
           <EditorContent editor={editor} style={{ outline: "none" }} />
         </div>
-        {/* Zoom pill */}
-        <div style={{
-          position: "absolute",
-          bottom: "16px",
-          right: "16px",
-          padding: "3px 10px",
-          borderRadius: "999px",
-          background: "rgba(0, 0, 0, 0.055)",
-          border: "1px solid rgba(0, 0, 0, 0.07)",
-          fontSize: "11.5px",
-          fontWeight: 500,
-          color: "rgba(0, 0, 0, 0.38)",
-          letterSpacing: "0.01em",
-          userSelect: "none",
-          WebkitUserSelect: "none",
-          pointerEvents: "none",
-          opacity: zoomVisible ? 1 : 0,
-          transition: "opacity 0.4s ease",
-        }}>
-          {zoomPct}%
+
+        {/* Status bar: word count + zoom */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "16px",
+            right: "16px",
+            display: "flex",
+            gap: "12px",
+            alignItems: "center",
+            userSelect: "none",
+            WebkitUserSelect: "none",
+            pointerEvents: "none",
+          }}
+        >
+          {/* Word count — always visible */}
+          {counts && (
+            <span
+              style={{
+                fontSize: "11px",
+                color: "rgba(0, 0, 0, 0.3)",
+                fontWeight: 400,
+                letterSpacing: "0.01em",
+              }}
+            >
+              {counts.words} {counts.words === 1 ? "word" : "words"}
+            </span>
+          )}
+          {/* Zoom pill — fades in/out */}
+          <span
+            style={{
+              padding: "3px 10px",
+              borderRadius: "999px",
+              background: "rgba(0, 0, 0, 0.055)",
+              border: "1px solid rgba(0, 0, 0, 0.07)",
+              fontSize: "11.5px",
+              fontWeight: 500,
+              color: "rgba(0, 0, 0, 0.38)",
+              letterSpacing: "0.01em",
+              opacity: zoomVisible ? 1 : 0,
+              transition: "opacity 0.4s ease",
+            }}
+          >
+            {zoomPct}%
+          </span>
         </div>
       </div>
 

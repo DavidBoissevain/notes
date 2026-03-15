@@ -21,7 +21,14 @@
       "Bash(npm install:*)",
       "mcp__tauri-notes__click",
       "mcp__tauri-notes__wait_for",
-      "mcp__tauri-notes__manage_window"
+      "mcp__tauri-notes__manage_window",
+      "Bash(node -e \"const sk = require\\(''''/c/Users/david/Documents/VSC/notes/node_modules/@tiptap/starter-kit''''\\); console.log\\(Object.keys\\(sk\\)\\)\")",
+      "Bash(grep -r \"CREATE TRIGGER\\\\|notes_fts\" /c/Users/david/Documents/VSC/notes/src --include=*.ts --include=*.tsx --include=*.rs)",
+      "mcp__tauri-notes__mouse_action",
+      "Bash(grep -r \"prosemirror.*drag\\\\|dragDrop\\\\|drop.*cursor\" C:UsersdavidDocumentsVSCtiptapdemos --include=*.tsx --include=*.jsx --include=*.ts --include=*.js)",
+      "Bash(grep -r \"editorProps\\\\|dragDrop\\\\|drop.*Cursor\\\\|dropcursor\" C:UsersdavidDocumentsVSCtiptapdemossrcExamples --include=*.tsx --include=*.jsx)",
+      "Bash(grep -r \"export.*StarterKit\\\\|from.*starter-kit\" C:UsersdavidDocumentsVSCtiptap --include=*.ts --include=*.js --include=*.tsx --include=*.jsx)",
+      "Bash(find C:UsersdavidDocumentsVSCtiptapdemosnode_modules@tiptapstarter-kit -name index.* -type f)"
     ]
   }
 }

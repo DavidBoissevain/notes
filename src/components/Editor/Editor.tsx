@@ -6,16 +6,14 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
 import { Typography } from "@tiptap/extension-typography";
-import { Placeholder } from "@tiptap/extension-placeholder";
 import { CharacterCount } from "@tiptap/extension-character-count";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { all, createLowlight } from "lowlight";
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { dropPoint } from "@tiptap/pm/transform";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Bold,
   Italic,
@@ -34,46 +32,47 @@ export const FONT_SIZE_DEFAULT = 15.5;
 
 const lowlight = createLowlight(all);
 
-// ---------- Current-line highlight extension ----------
-const currentLineKey = new PluginKey("currentLine");
+// ---------- Current-line highlight (visual-line aware) ----------
+// Uses a ProseMirror plugin view() so it fires on every state change.
+// Finds the ".current-line-overlay" div in the DOM and positions it.
 const CurrentLineExtension = Extension.create({
   name: "currentLine",
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: currentLineKey,
-        state: {
-          init(_, state) {
-            return getLineDecoration(state);
-          },
-          apply(tr, old, _, newState) {
-            if (tr.docChanged || tr.selectionSet) return getLineDecoration(newState);
-            return old;
-          },
-        },
-        props: {
-          decorations(state) {
-            return currentLineKey.getState(state);
-          },
+        view() {
+          return {
+            update(view) {
+              const { selection } = view.state;
+              // Walk up to the flex wrapper that contains the overlay
+              const overlay = view.dom
+                .closest(".editor-scroll")
+                ?.querySelector(
+                  ".current-line-overlay",
+                ) as HTMLElement | null;
+              const flex = overlay?.parentElement;
+              if (!overlay) return;
+
+              if (!selection.empty) {
+                overlay.style.display = "none";
+                return;
+              }
+
+              const coords = view.coordsAtPos(selection.head);
+              const flexRect = flex!.getBoundingClientRect();
+              const lh =
+                parseFloat(getComputedStyle(view.dom).lineHeight) || 20;
+
+              overlay.style.display = "block";
+              overlay.style.top = `${coords.top - flexRect.top}px`;
+              overlay.style.height = `${lh}px`;
+            },
+          };
         },
       }),
     ];
   },
 });
-
-function getLineDecoration(state: any): DecorationSet {
-  const { selection } = state;
-  if (!selection.empty) return DecorationSet.empty;
-  const $pos = selection.$head;
-  // Find the top-level node (direct child of doc)
-  const depth = $pos.depth;
-  if (depth === 0) return DecorationSet.empty;
-  const start = $pos.start(1);
-  const end = $pos.end(1);
-  return DecorationSet.create(state.doc, [
-    Decoration.node(start - 1, end + 1, { class: "current-line" }),
-  ]);
-}
 
 // ---------- Drag-and-drop text extension ----------
 // Implements text-selection drag-and-drop via a ProseMirror Plugin,
@@ -248,6 +247,105 @@ interface EditorProps {
   autoFocus?: boolean;
 }
 
+// ---------- Line numbers (visual-line aware) ----------
+function LineNumbers({
+  editor,
+  lineHeight,
+}: {
+  editor: ReturnType<typeof useEditor>;
+  lineHeight: number;
+}) {
+  const [entries, setEntries] = useState<{ height: number }[]>([]);
+
+  const recalc = useCallback(() => {
+    if (!editor?.view) return;
+    const pmEl = editor.view.dom as HTMLElement;
+    const children = Array.from(pmEl.children) as HTMLElement[];
+    if (children.length === 0) {
+      setEntries([]);
+      return;
+    }
+
+    const next: { height: number }[] = [];
+
+    // Measure one block element and push visual-line entries
+    const measureBlock = (el: HTMLElement, bottomBound: number) => {
+      const blockHeight = bottomBound - el.offsetTop;
+      const visualLines = Math.max(1, Math.round(blockHeight / lineHeight));
+      const perLine = blockHeight / visualLines;
+      for (let j = 0; j < visualLines; j++) {
+        next.push({ height: perLine });
+      }
+    };
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const nextTop =
+        i < children.length - 1
+          ? children[i + 1].offsetTop
+          : child.offsetTop + child.offsetHeight;
+      const tag = child.tagName;
+
+      // For lists, iterate <li> children so each item gets its own line number
+      if (tag === "UL" || tag === "OL") {
+        const items = Array.from(child.children).filter(
+          (c) => c.tagName === "LI",
+        ) as HTMLElement[];
+        // Bottom of the list element itself (excludes margin)
+        const listBottom = child.offsetTop + child.offsetHeight;
+        for (let k = 0; k < items.length; k++) {
+          const itemBottom =
+            k < items.length - 1
+              ? items[k + 1].offsetTop
+              : listBottom;
+          measureBlock(items[k], itemBottom);
+        }
+        // Silently absorb the list's margin-bottom gap into the last entry
+        // so the next element's line number starts at the right position
+        const marginGap = nextTop - listBottom;
+        if (marginGap > 0 && next.length > 0) {
+          next[next.length - 1].height += marginGap;
+        }
+      } else {
+        measureBlock(child, nextTop);
+      }
+    }
+    setEntries(next);
+  }, [editor, lineHeight]);
+
+  useEffect(() => {
+    if (!editor?.view) return;
+    const pmEl = editor.view.dom as HTMLElement;
+
+    // Initial + debounced recalc
+    const raf = () => requestAnimationFrame(recalc);
+    raf();
+
+    editor.on("update", raf);
+    const ro = new ResizeObserver(raf);
+    ro.observe(pmEl);
+
+    return () => {
+      editor.off("update", raf);
+      ro.disconnect();
+    };
+  }, [editor, lineHeight, recalc]);
+
+  if (!entries.length) return null;
+
+  return (
+    <div className="line-gutter">
+      <div style={{ paddingTop: 24 }}>
+        {entries.map((e, i) => (
+          <div key={i} className="line-num" style={{ height: e.height }}>
+            {i + 1}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function extractTitle(html: string): string {
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
@@ -369,7 +467,6 @@ export function Editor({
         defaultProtocol: "https",
       }),
       Typography,
-      Placeholder.configure({ placeholder: "Write something…" }),
       CharacterCount,
       DragTextExtension,
       CurrentLineExtension,
@@ -462,7 +559,7 @@ export function Editor({
             if (e.target === e.currentTarget) editor?.commands.focus("end");
           }}
         >
-          {/* Bubble menu */}
+          {/* Bubble menu (portaled, position doesn't matter) */}
           {editor && (
             <BubbleMenu className="bubble-menu" editor={editor}>
               <button
@@ -522,7 +619,41 @@ export function Editor({
             </BubbleMenu>
           )}
 
-          <EditorContent editor={editor} style={{ outline: "none" }} />
+          <div
+            style={{
+              display: "flex",
+              minHeight: "100%",
+              position: "relative",
+              isolation: "isolate",
+            }}
+          >
+            {/* Current-line highlight overlay (z-index -1 = behind content) */}
+            <div
+              className="current-line-overlay"
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                background: "rgba(0, 0, 0, 0.07)",
+                pointerEvents: "none",
+                display: "none",
+                zIndex: -1,
+              }}
+            />
+            <LineNumbers
+              editor={editor}
+              lineHeight={Math.round(fontSize * 1.35)}
+            />
+            <div
+              style={{ flex: 1, minWidth: 0 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget)
+                  editor?.commands.focus("end");
+              }}
+            >
+              <EditorContent editor={editor} style={{ outline: "none" }} />
+            </div>
+          </div>
         </div>
 
         {/* Status bar: word count + zoom */}

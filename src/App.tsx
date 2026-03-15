@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
 import { Editor, FONT_SIZE_DEFAULT } from "./components/Editor/Editor";
@@ -8,6 +8,9 @@ import { useSearch } from "./hooks/useSearch";
 import { FileText } from "lucide-react";
 
 const RESIZE_SIZE = 12;
+const SIDEBAR_MIN = 160;
+const SIDEBAR_MAX = 400;
+const SIDEBAR_DEFAULT = 220;
 
 type ResizeDirection = "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest";
 
@@ -22,7 +25,6 @@ const resizeEdges: { direction: ResizeDirection; style: React.CSSProperties }[] 
   { direction: "SouthWest", style: { bottom: 0, left: 0, width: RESIZE_SIZE, height: RESIZE_SIZE, cursor: "sw-resize" } },
 ];
 
-// Invisible hit-zones around the window edge; hidden when maximized since resize doesn't apply.
 function ResizeHandles({ maximized }: { maximized: boolean }) {
   if (maximized) return null;
   return (
@@ -38,62 +40,72 @@ function ResizeHandles({ maximized }: { maximized: boolean }) {
   );
 }
 
-// App holds only layout/window state. All editor state lives in Editor; notes state in useNotes.
 export default function App() {
   const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading } = useNotes();
   const [searchQuery, setSearchQuery] = useState("");
   const [autoFocus, setAutoFocus] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [inset, setInset] = useState({ top: 16, right: 16, bottom: 16, left: 16 });
 
-  // Tracks window position/size to collapse the floating-window border when snapped to a screen edge.
   useEffect(() => {
     const win = getCurrentWindow();
-    const EDGE_PX = 16;
-    const THRESHOLD = 4;
-
-    async function update() {
-      const isMax = await win.isMaximized();
-      setMaximized(isMax);
-      if (isMax) { setInset({ top: 0, right: 0, bottom: 0, left: 0 }); return; }
-
-      const [pos, size, monitor] = await Promise.all([
-        win.outerPosition(),
-        win.outerSize(),
-        currentMonitor(),
-      ]);
-      if (!monitor) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const mx = monitor.position.x, my = monitor.position.y;
-      const mw = monitor.size.width, mh = monitor.size.height;
-      const t = Math.round(THRESHOLD * dpr), e = Math.round(EDGE_PX * dpr);
-
-      setInset({
-        top:    pos.y          <= my + t       ? 0 : EDGE_PX,
-        left:   pos.x          <= mx + t       ? 0 : EDGE_PX,
-        bottom: pos.y + size.height >= my + mh - t ? 0 : EDGE_PX,
-        right:  pos.x + size.width  >= mx + mw - t ? 0 : EDGE_PX,
-      });
-      void e;
-    }
-
+    const update = () => { win.isMaximized().then(setMaximized); };
     update();
     const unlistenResize = win.onResized(update);
     const unlistenMove   = win.onMoved(update);
     return () => { unlistenResize.then(fn => fn()); unlistenMove.then(fn => fn()); };
   }, []);
+
+  // --- Persisted font size ---
   const [fontSize, setFontSize] = useState(() => {
     const stored = localStorage.getItem("editor-font-size");
     return stored ? parseFloat(stored) : FONT_SIZE_DEFAULT;
   });
+  useEffect(() => { localStorage.setItem("editor-font-size", String(fontSize)); }, [fontSize]);
 
-  useEffect(() => {
-    localStorage.setItem("editor-font-size", String(fontSize));
-  }, [fontSize]);
+  // --- Persisted sidebar width ---
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem("sidebar-width");
+    return stored ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parseInt(stored))) : SIDEBAR_DEFAULT;
+  });
+  useEffect(() => { localStorage.setItem("sidebar-width", String(sidebarWidth)); }, [sidebarWidth]);
+
+  // --- Persisted sidebar collapsed ---
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "true",
+  );
+  useEffect(() => { localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed)); }, [sidebarCollapsed]);
+
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((p) => !p), []);
+
+  // --- Sidebar resize drag ---
+  const containerRef = useRef<HTMLDivElement>(null);
+  const handleSidebarResize = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = sidebarWidth;
+      const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0;
+
+      const onMove = (ev: MouseEvent) => {
+        const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + (ev.clientX - startX)));
+        setSidebarWidth(newW);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      void containerLeft;
+    },
+    [sidebarWidth],
+  );
 
   const { results: searchResults } = useSearch(searchQuery);
-  // Falls back to the full notes list when search is empty; memoized to keep NoteList props stable.
   const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
 
   const handleSelectNote = useCallback((id: string) => {
@@ -112,21 +124,20 @@ export default function App() {
     <div
       style={{
         position: "fixed",
-        top: inset.top,
-        right: inset.right,
-        bottom: inset.bottom,
-        left: inset.left,
+        inset: 0,
         display: "flex",
         flexDirection: "column",
-        borderRadius: (inset.top || inset.left || inset.right || inset.bottom) ? "8px" : 0,
         overflow: "hidden",
-        boxShadow: (inset.top || inset.left || inset.right || inset.bottom) ? "0 6.4px 14.4px 0 rgba(0,0,0,0.132), 0 1.2px 3.6px 0 rgba(0,0,0,0.108)" : "none",
       }}
     >
       <ResizeHandles maximized={maximized} />
-      <TitleBar maximized={maximized} />
+      <TitleBar
+        maximized={maximized}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+      />
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <NoteList
           notes={displayedNotes}
           selectedId={selectedId}
@@ -135,7 +146,16 @@ export default function App() {
           onDelete={removeNote}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
         />
+
+        {/* Sidebar resize handle */}
+        {!sidebarCollapsed && (
+          <div
+            className="sidebar-resize-handle"
+            onMouseDown={handleSidebarResize}
+          />
+        )}
 
         <main
           style={{

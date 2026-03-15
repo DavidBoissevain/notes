@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PanelLeft, PanelLeftClose } from "lucide-react";
 
 const win = getCurrentWindow();
 
@@ -16,33 +17,87 @@ const mdl2Style: React.CSSProperties = {
   lineHeight: 1,
 };
 
-export function TitleBar({ maximized }: { maximized: boolean }) {
+export function TitleBar({
+  maximized,
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  maximized: boolean;
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+}) {
   return (
     <div
       data-tauri-drag-region
       style={{
         height: "44px",
         flexShrink: 0,
-        background: "#2F3235",
+        background: "#ffffff",
+        borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-end",
-        paddingLeft: "16px",
+        justifyContent: "space-between",
         userSelect: "none",
         WebkitUserSelect: "none",
       }}
     >
+      {/* Left: sidebar toggle */}
+      <div style={{ display: "flex", paddingLeft: "12px" }}>
+        <button
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          style={{
+            width: "32px",
+            height: "32px",
+            border: "none",
+            background: "transparent",
+            borderRadius: "6px",
+            cursor: "default",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "rgba(0, 0, 0, 0.35)",
+            transition: "background 0.1s, color 0.1s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
+            e.currentTarget.style.color = "rgba(0, 0, 0, 0.7)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
+          }}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeft size={16} />
+          ) : (
+            <PanelLeftClose size={16} />
+          )}
+        </button>
+      </div>
+
+      {/* Right: window controls */}
       <div style={{ display: "flex" }}>
-        <WindowButton onClick={() => win.minimize()} label="Minimize" hoverColor="rgba(255,255,255,0.1)">
+        <WindowButton
+          onClick={() => win.minimize()}
+          label="Minimize"
+          hoverColor="rgba(0, 0, 0, 0.06)"
+        >
           <span style={mdl2Style}>{MDL2.minimize}</span>
         </WindowButton>
-        <WindowButton onClick={() => win.toggleMaximize()} label={maximized ? "Restore" : "Maximize"} hoverColor="rgba(255,255,255,0.1)">
-          <span style={mdl2Style}>{maximized ? MDL2.restore : MDL2.maximize}</span>
+        <WindowButton
+          onClick={() => win.toggleMaximize()}
+          label={maximized ? "Restore" : "Maximize"}
+          hoverColor="rgba(0, 0, 0, 0.06)"
+        >
+          <span style={mdl2Style}>
+            {maximized ? MDL2.restore : MDL2.maximize}
+          </span>
         </WindowButton>
         <WindowButton
           onClick={() => win.close()}
           label="Close"
-          hoverColor="rgba(196,43,28,0.88)"
+          hoverColor="rgba(196, 43, 28, 0.88)"
           hoverIconColor="white"
           isClose
         >
@@ -81,16 +136,17 @@ function WindowButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "rgba(255, 255, 255, 0.38)",
+        color: "rgba(0, 0, 0, 0.35)",
         transition: "background 0.1s, color 0.1s",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = hoverColor;
-        e.currentTarget.style.color = hoverIconColor ?? "rgba(255, 255, 255, 0.85)";
+        e.currentTarget.style.color =
+          hoverIconColor ?? "rgba(0, 0, 0, 0.7)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = "rgba(255, 255, 255, 0.38)";
+        e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
       }}
     >
       {children}

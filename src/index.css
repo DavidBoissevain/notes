@@ -1,6 +1,8 @@
 @import "tailwindcss";
-@import "@fontsource/atkinson-hyperlegible/400.css";
-@import "@fontsource/atkinson-hyperlegible/700.css";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
 
 * {
   box-sizing: border-box;
@@ -9,7 +11,7 @@
 }
 
 :root {
-  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  font-family: "Poppins", system-ui, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -49,30 +51,48 @@ body::-webkit-scrollbar {
 
 /* Sidebar */
 .note-list-sidebar {
-  width: 200px;
   flex-shrink: 0;
   overflow: hidden;
-  background: #2F3235;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background: #f8f8f8;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
   user-select: none;
   -webkit-user-select: none;
+  transition: width 0.2s ease;
 }
 
 .note-list-sidebar ul::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.06);
   border-radius: 3px;
 }
 
 .note-list-sidebar ul:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .note-list-sidebar ul:hover::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .sidebar-search::placeholder {
-  color: rgba(255, 255, 255, 0.22);
+  color: rgba(0, 0, 0, 0.3);
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+  margin-left: -3px;
+  margin-right: -2px;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 /* TipTap editor */
@@ -128,9 +148,8 @@ body::-webkit-scrollbar {
   min-height: 100%;
   padding: 24px 40px 70vh 12px;
   margin: 0;
-  margin-left: 40px;
   /* line-height controlled via inline style in Editor.tsx for integer-pixel rendering */
-  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  font-family: "Poppins", system-ui, sans-serif;
   color: #1c1c1e;
   font-weight: 400;
   white-space: pre-wrap;
@@ -138,18 +157,24 @@ body::-webkit-scrollbar {
   caret-color: #6366F1;
 }
 
-/* Current line highlight */
-.ProseMirror > .current-line {
-  background: rgba(0, 0, 0, 0.07);
-  margin-left: -12px;
-  margin-right: -56px;
-  padding-left: 12px;
-  padding-right: 56px;
-  border-radius: 0;
+/* Line-number gutter */
+.line-gutter {
+  width: 40px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.035);
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.ProseMirror > .current-line::after {
-  left: -34px;
+.line-num {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 11px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  color: rgba(0, 0, 0, 0.22);
 }
 
 /* Placeholder text on empty editor */
@@ -234,7 +259,7 @@ body::-webkit-scrollbar {
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.5em;
-  margin-bottom: 0.75em;
+  margin-bottom: 0;
 }
 
 /* Tailwind preflight resets list-style to none — restore inside editor */

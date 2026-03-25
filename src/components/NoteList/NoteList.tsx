@@ -2,19 +2,6 @@ import { memo, useMemo, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 import type { Note } from "../../lib/db";
 
-function formatTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "Just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  const d = new Date(ts);
-  const now = new Date();
-  if (d.getFullYear() === now.getFullYear()) {
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 
 interface NoteItemProps {
   note: Note;
@@ -58,40 +45,37 @@ const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextM
       >
         <div
           style={{
-            fontSize: "13.5px",
-            fontWeight: 500,
-            marginBottom: "3px",
+            fontSize: "13px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            color: isSelected ? "#6366F1" : "rgba(0, 0, 0, 0.85)",
-          }}
-        >
-          {note.title || "New note"}
-        </div>
-        <div
-          style={{
-            fontSize: "11.5px",
-            color: "rgba(0, 0, 0, 0.4)",
             display: "flex",
-            gap: "5px",
-            overflow: "hidden",
+            gap: "6px",
+            alignItems: "baseline",
           }}
         >
-          <span style={{ flexShrink: 0 }}>{formatTime(note.updated_at)}</span>
+          <span
+            style={{
+              fontWeight: 500,
+              flexShrink: 0,
+              color: isSelected ? "#6366F1" : "rgba(0, 0, 0, 0.85)",
+            }}
+          >
+            {note.title || "New note"}
+          </span>
           {preview && (
-            <>
-              <span style={{ opacity: 0.5 }}>·</span>
-              <span
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {preview}
-              </span>
-            </>
+            <span
+              style={{
+                color: "rgba(0, 0, 0, 0.33)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+                fontWeight: 400,
+              }}
+            >
+              {preview}
+            </span>
           )}
         </div>
       </button>
@@ -123,29 +107,8 @@ export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, on
       style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", ...style }}
       onClick={() => setContextMenu(null)}
     >
-      {/* Header */}
-      <div
-        style={{
-          padding: "10px 10px 8px 16px",
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "rgba(0, 0, 0, 0.4)",
-            letterSpacing: "0.01em",
-            fontFamily: "inherit",
-          }}
-        >
-          Notes
-        </span>
-      </div>
-
       {/* Search */}
-      <div style={{ padding: "0 10px 10px" }}>
+      <div style={{ padding: "10px 10px 10px" }}>
         <div style={{ position: "relative" }}>
           <Search
             size={12}

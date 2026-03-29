@@ -173,13 +173,10 @@ export default function App() {
 
   // Flush unsaved changes before window closes
   useEffect(() => {
-    let flushing = false;
     const promise = getCurrentWindow().onCloseRequested(async (event) => {
-      if (flushing) return;
-      flushing = true;
       event.preventDefault();
       await flushPendingSave();
-      getCurrentWindow().close();
+      getCurrentWindow().destroy();
     });
     return () => { promise.then(fn => fn()); };
   }, []);

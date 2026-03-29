@@ -22,7 +22,6 @@ const mdl2Style: React.CSSProperties = {
 
 interface TitleBarProps {
   maximized: boolean;
-  focused: boolean;
   noteTitle?: string;
   sidebarWidth: number;
   sidebarCollapsed: boolean;
@@ -42,7 +41,6 @@ interface TitleBarProps {
 
 export function TitleBar({
   maximized,
-  focused,
   noteTitle: _,
   sidebarWidth,
   sidebarCollapsed,
@@ -123,17 +121,30 @@ export function TitleBar({
       style={{
         height: "52px",
         flexShrink: 0,
-        background: focused ? "#edf1f6" : "#ebebeb",
-        borderBottom: `1px solid ${focused ? "rgba(0, 0, 0, 0.06)" : "rgba(0, 0, 0, 0.04)"}`,
+        background: "#ffffff",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         position: "relative",
         userSelect: "none",
         WebkitUserSelect: "none",
-        transition: "background 0.15s ease",
       }}
     >
+      {/* Vertical divider — continuous with sidebar border */}
+      {!sidebarCollapsed && (
+        <div
+          style={{
+            position: "absolute",
+            left: sidebarWidth - 1,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "rgba(0, 0, 0, 0.16)",
+            zIndex: 1,
+          }}
+        />
+      )}
+
       {/* Left section: folder picker + compose/search buttons — fixed to sidebar width */}
       <div
         style={{
@@ -230,12 +241,13 @@ export function TitleBar({
                   style={{
                     width: "100%",
                     padding: "7px 30px 7px 28px",
-                    fontSize: 13,
+                    fontSize: 14,
                     borderRadius: 8,
                     border: "1px solid rgba(0,0,0,0.08)",
                     background: "rgba(0,0,0,0.03)",
                     outline: "none",
                     fontFamily: "inherit",
+                    fontWeight: 550,
                     color: "rgba(0,0,0,0.8)",
                     boxSizing: "border-box",
                   }}
@@ -555,8 +567,8 @@ function FolderItem({
           background: "transparent",
           cursor: "pointer",
           padding: "7px 4px",
-          fontSize: 13,
-          fontWeight: isActive ? 600 : 400,
+          fontSize: 14,
+          fontWeight: isActive ? 600 : 500,
           color: "#1c1c1e",
           textAlign: "left",
           fontFamily: "inherit",

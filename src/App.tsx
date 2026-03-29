@@ -8,7 +8,7 @@ import { useNotes } from "./hooks/useNotes";
 import { useSearch } from "./hooks/useSearch";
 import { useNoteHistory } from "./hooks/useNoteHistory";
 import { getAllFolders, createFolder, deleteFolder, updateFolderIcon, DEFAULT_FOLDER_ID, type Folder } from "./lib/db";
-import { FileText, PanelLeftOpen } from "lucide-react";
+import { PanelLeftOpen } from "lucide-react";
 
 const RESIZE_SIZE = 12;
 const SIDEBAR_MIN = 200;
@@ -75,7 +75,9 @@ export default function App() {
     setFolders((prev) => prev.map((f) => f.id === id ? { ...f, icon } : f));
   }, []);
 
-  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading, newNoteId } = useNotes(currentFolderId);
+  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, removeNotes, refreshNote, loading, newNoteId } = useNotes(currentFolderId);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastClickedIdRef = useRef<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [autoFocus, setAutoFocus] = useState(false);
@@ -99,19 +101,15 @@ export default function App() {
     setSearchQuery("");
   }, []);
 
-  const [windowFocused, setWindowFocused] = useState(true);
-
   useEffect(() => {
     const win = getCurrentWindow();
     const update = () => { win.isMaximized().then(setMaximized); };
     update();
     const unlistenResize = win.onResized(update);
     const unlistenMove   = win.onMoved(update);
-    const unlistenFocus  = win.onFocusChanged(({ payload }) => setWindowFocused(payload));
     return () => {
       unlistenResize.then(fn => fn());
       unlistenMove.then(fn => fn());
-      unlistenFocus.then(fn => fn());
     };
   }, []);
 
@@ -192,12 +190,55 @@ export default function App() {
   const { results: searchResults } = useSearch(searchQuery, currentFolderId);
   const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
 
-  const handleSelectNote = useCallback((id: string) => {
+  const handleSelectNote = useCallback((id: string, e?: React.MouseEvent) => {
     setAutoFocus(false);
     setSidebarFocused(true);
+
+    if (e?.ctrlKey || e?.metaKey) {
+      // Ctrl+click: toggle this note in/out of multi-select
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        // First Ctrl+click: seed with current primary selection
+        if (next.size === 0 && selectedId) next.add(selectedId);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      lastClickedIdRef.current = id;
+      return;
+    }
+
+    if (e?.shiftKey) {
+      // Shift+click: range select from last clicked to current
+      const anchor = lastClickedIdRef.current;
+      if (anchor) {
+        const ids = displayedNotes.map((n) => n.id);
+        const anchorIdx = ids.indexOf(anchor);
+        const targetIdx = ids.indexOf(id);
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const start = Math.min(anchorIdx, targetIdx);
+          const end = Math.max(anchorIdx, targetIdx);
+          const rangeIds = ids.slice(start, end + 1);
+          setSelectedIds(new Set(rangeIds));
+          return;
+        }
+      }
+    }
+
+    // Normal click: single select, clear multi-select
+    setSelectedIds(new Set());
+    lastClickedIdRef.current = id;
     setSelectedId(id);
     pushHistory(id);
-  }, [setSelectedId, pushHistory]);
+  }, [setSelectedId, pushHistory, selectedId, displayedNotes]);
+
+  const handleDeleteSelected = useCallback(async (ids: string[]) => {
+    await removeNotes(ids);
+    setSelectedIds(new Set());
+  }, [removeNotes]);
 
   const handleNewNote = useCallback(async () => {
     setAutoFocus(true);
@@ -234,7 +275,6 @@ export default function App() {
       <ResizeHandles maximized={maximized} />
       <TitleBar
         maximized={maximized}
-        focused={windowFocused}
         noteTitle={selectedNote?.title}
         sidebarWidth={sidebarWidth}
         sidebarCollapsed={sidebarCollapsed}
@@ -256,9 +296,11 @@ export default function App() {
         <NoteList
           notes={displayedNotes}
           selectedId={selectedId}
+          selectedIds={selectedIds}
           newNoteId={newNoteId}
           onSelect={handleSelectNote}
           onDelete={removeNote}
+          onDeleteSelected={handleDeleteSelected}
           searchQuery={searchQuery}
           sidebarFocused={sidebarFocused}
           onToggleSidebar={toggleSidebar}
@@ -293,15 +335,24 @@ export default function App() {
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: "12px",
-              opacity: 0.35,
+              gap: "16px",
               userSelect: "none",
               WebkitUserSelect: "none",
             }}>
-              <FileText size={40} />
-              <span style={{ fontSize: "14px", fontWeight: 500 }}>No notes yet</span>
-              <span style={{ fontSize: "12.5px", opacity: 0.7 }}>
-                Click the pencil icon to create your first note
+              {/* Placeholder for illustration — replace src with your chosen cartoon SVG */}
+              <img
+                src="/Forest-bro.svg"
+                alt="No notes"
+                style={{
+                  width: "min(400px, 50vh)",
+                  height: "min(400px, 50vh)",
+                  opacity: 0.35,
+                  filter: "grayscale(1)",
+                  flexShrink: 1,
+                }}
+              />
+              <span style={{ fontSize: "28px", fontWeight: 500, color: "#d8d8d8", marginTop: 24 }}>
+                0 notes
               </span>
             </div>
           ) : (

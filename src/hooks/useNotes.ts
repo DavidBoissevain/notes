@@ -1,6 +1,6 @@
 // Central notes state: loads from SQLite on mount, exposes CRUD + refreshNote for sidebar updates.
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getNotesByFolder, createNote, deleteNote, type Note } from "../lib/db";
+import { getNotesByFolder, createNote, deleteNote, deleteNotes, type Note } from "../lib/db";
 import { extractTitle } from "../lib/extractTitle";
 
 export function useNotes(folderId: string) {
@@ -44,6 +44,16 @@ export function useNotes(folderId: string) {
     });
   }, [selectedId]);
 
+  const removeNotes = useCallback(async (ids: string[]) => {
+    await deleteNotes(ids);
+    const idSet = new Set(ids);
+    setNotes((prev) => {
+      const next = prev.filter((n) => !idSet.has(n.id));
+      if (selectedId && idSet.has(selectedId)) setSelectedId(next[0]?.id ?? null);
+      return next;
+    });
+  }, [selectedId]);
+
   // Called by Editor after auto-save; derives title from content, updates sidebar, re-sorts by updated_at.
   const refreshNote = useCallback((id: string, content: string) => {
     const { title } = extractTitle(content);
@@ -62,5 +72,5 @@ export function useNotes(folderId: string) {
     [notes, selectedId]
   );
 
-  return { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading, newNoteId };
+  return { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, removeNotes, refreshNote, loading, newNoteId };
 }

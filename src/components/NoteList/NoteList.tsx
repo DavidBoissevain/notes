@@ -8,25 +8,44 @@ import { timeAgo } from "../../lib/timeAgo";
 interface NoteItemProps {
   note: Note;
   isSelected: boolean;
+  isMultiSelected: boolean;
   isFirst: boolean;
   isNew: boolean;
   isSidebarFocused: boolean;
   hideSeparator: boolean;
-  onSelect: (id: string) => void;
+  prevHighlighted: boolean;
+  nextHighlighted: boolean;
+  onSelect: (id: string, e: React.MouseEvent) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
 }
 
-const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSidebarFocused, hideSeparator, onSelect, onContextMenu }: NoteItemProps) {
+const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isFirst, isSidebarFocused, isNew, hideSeparator, prevHighlighted, nextHighlighted, onSelect, onContextMenu }: NoteItemProps) {
   const { title, preview } = useMemo(() => extractTitle(note.content), [note.content]);
   const displayTitle = title || "New note";
   const displayPreview = preview || "Start writing...";
   const timestamp = useMemo(() => timeAgo(note.updated_at), [note.updated_at]);
 
-  const showLeftBar = isSelected && isSidebarFocused;
+  const highlighted = isSelected || isMultiSelected;
+  const showLeftBar = highlighted && isSidebarFocused;
+
+  // Connected corners: flatten edges that touch an adjacent highlighted item
+  const topRadius = highlighted && prevHighlighted ? 0 : 10;
+  const bottomRadius = highlighted && nextHighlighted ? 0 : 10;
+  const borderRadius = `${topRadius}px ${topRadius}px ${bottomRadius}px ${bottomRadius}px`;
+
+  // Left accent bar corner radius — match the button corners
+  const barTopRadius = highlighted && prevHighlighted ? 0 : 2;
+  const barBottomRadius = highlighted && nextHighlighted ? 0 : 2;
 
   return (
-    <li className={`note-item${isNew ? " note-slide-in" : ""}`} style={{ padding: "2px 8px" }}>
-      {/* Separator line — inset like Bear */}
+    <li
+      className={`note-item${isNew ? " note-slide-in" : ""}`}
+      style={{
+        padding: "2px 8px",
+        position: "relative",
+      }}
+    >
+      {/* Separator line — always rendered for consistent height, transparent when hidden */}
       {!isFirst && (
         <div
           style={{
@@ -36,8 +55,36 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSi
           }}
         />
       )}
+      {/* Background bridge to previous highlighted item — fills exact gap, no overlap */}
+      {highlighted && prevHighlighted && (
+        <div
+          style={{
+            position: "absolute",
+            top: -2,
+            left: 8,
+            right: 8,
+            height: 5, // 2px prev padding + 1px separator + 2px current padding
+            background: "rgba(0, 0, 0, 0.06)",
+            zIndex: 0,
+          }}
+        />
+      )}
+      {/* Left accent bar bridge to previous highlighted item */}
+      {showLeftBar && prevHighlighted && (
+        <div
+          style={{
+            position: "absolute",
+            top: -2,
+            left: 8,
+            width: 5,
+            height: 5,
+            background: "#4A6FA5",
+            zIndex: 1,
+          }}
+        />
+      )}
       <button
-        onClick={() => onSelect(note.id)}
+        onClick={(e) => onSelect(note.id, e)}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -46,9 +93,9 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSi
         style={{
           width: "100%",
           textAlign: "left",
-          background: isSelected ? "rgba(0, 0, 0, 0.06)" : "transparent",
+          background: highlighted ? "rgba(0, 0, 0, 0.06)" : "transparent",
           border: "none",
-          borderRadius: 10,
+          borderRadius,
           cursor: "pointer",
           padding: "10px 14px 10px 14px",
           transition: "background 0.15s",
@@ -57,15 +104,16 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSi
           gap: "2px",
           position: "relative",
           overflow: "hidden",
+          outline: "none",
         }}
         onMouseEnter={(e) => {
-          if (!isSelected) e.currentTarget.style.background = "rgba(0, 0, 0, 0.03)";
+          if (!highlighted) e.currentTarget.style.background = "rgba(0, 0, 0, 0.03)";
         }}
         onMouseLeave={(e) => {
-          if (!isSelected) e.currentTarget.style.background = "transparent";
+          if (!highlighted) e.currentTarget.style.background = "transparent";
         }}
       >
-        {/* Left accent bar — full height like Bear */}
+        {/* Left accent bar */}
         {showLeftBar && (
           <div
             style={{
@@ -74,7 +122,7 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSi
               top: 0,
               bottom: 0,
               width: 5,
-              borderRadius: "2px 0 0 2px",
+              borderRadius: `${barTopRadius}px 0 0 ${barBottomRadius}px`,
               background: "#4A6FA5",
               transition: "opacity 0.15s",
             }}
@@ -125,9 +173,11 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSi
 interface NoteListProps {
   notes: Note[];
   selectedId: string | null;
+  selectedIds: Set<string>;
   newNoteId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, e?: React.MouseEvent) => void;
   onDelete: (id: string) => void;
+  onDeleteSelected: (ids: string[]) => void;
   searchQuery: string;
   sidebarFocused: boolean;
   onToggleSidebar: () => void;
@@ -135,7 +185,7 @@ interface NoteListProps {
   style?: React.CSSProperties;
 }
 
-export const NoteList = memo(function NoteList({ notes, selectedId, newNoteId, onSelect, onDelete, searchQuery, sidebarFocused, onToggleSidebar, collapsed, style }: NoteListProps) {
+export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds, newNoteId, onSelect, onDelete, onDeleteSelected, searchQuery, sidebarFocused, onToggleSidebar, collapsed, style }: NoteListProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const handleContextMenu = useMemo(
@@ -151,11 +201,6 @@ export const NoteList = memo(function NoteList({ notes, selectedId, newNoteId, o
     >
       {/* Note list */}
       <ul style={{ listStyle: "none", padding: "8px 0", overflowY: "auto", flex: 1, minHeight: 0 }}>
-        {notes.length === 0 && !searchQuery && (
-          <li style={{ padding: "32px 16px", textAlign: "center", color: "rgba(0, 0, 0, 0.25)", fontSize: "12.5px" }}>
-            No notes yet
-          </li>
-        )}
         {notes.length === 0 && searchQuery && (
           <li style={{ padding: "32px 16px", textAlign: "center", color: "rgba(0, 0, 0, 0.25)", fontSize: "12.5px" }}>
             No results for &ldquo;{searchQuery}&rdquo;
@@ -163,16 +208,22 @@ export const NoteList = memo(function NoteList({ notes, selectedId, newNoteId, o
         )}
         {notes.map((note, i) => {
           const isSelected = selectedId === note.id;
-          const prevSelected = i > 0 && selectedId === notes[i - 1].id;
+          const isMulti = selectedIds.has(note.id);
+          const highlighted = isSelected || isMulti;
+          const prevHL = i > 0 && (selectedId === notes[i - 1].id || selectedIds.has(notes[i - 1].id));
+          const nextHL = i < notes.length - 1 && (selectedId === notes[i + 1].id || selectedIds.has(notes[i + 1].id));
           return (
             <NoteItem
               key={note.id}
               note={note}
               isSelected={isSelected}
+              isMultiSelected={isMulti}
               isFirst={i === 0}
               isNew={note.id === newNoteId}
               isSidebarFocused={sidebarFocused}
-              hideSeparator={isSelected || prevSelected}
+              hideSeparator={highlighted || prevHL}
+              prevHighlighted={highlighted && prevHL}
+              nextHighlighted={highlighted && nextHL}
               onSelect={onSelect}
               onContextMenu={handleContextMenu}
             />
@@ -216,51 +267,64 @@ export const NoteList = memo(function NoteList({ notes, selectedId, newNoteId, o
         </button>
       </div>
 
-      {contextMenu && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setContextMenu(null)}
-          />
-          <div
-            style={{
-              position: "fixed",
-              top: contextMenu.y,
-              left: contextMenu.x,
-              zIndex: 1000,
-              background: "#ffffff",
-              borderRadius: "8px",
-              border: "1px solid rgba(0, 0, 0, 0.08)",
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
-              padding: "4px",
-              minWidth: "140px",
-            }}
-          >
-            <button
-              onClick={() => { onDelete(contextMenu.id); setContextMenu(null); }}
+      {contextMenu && (() => {
+        const multiCount = selectedIds.size;
+        const isContextInSelection = multiCount > 0 && selectedIds.has(contextMenu.id);
+        const deleteLabel = isContextInSelection ? `Delete ${multiCount} notes` : "Delete note";
+        const handleDelete = () => {
+          if (isContextInSelection) {
+            onDeleteSelected([...selectedIds]);
+          } else {
+            onDelete(contextMenu.id);
+          }
+          setContextMenu(null);
+        };
+        return (
+          <>
+            <div
+              style={{ position: "fixed", inset: 0, zIndex: 999 }}
+              onClick={() => setContextMenu(null)}
+            />
+            <div
               style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "7px 10px",
-                background: "none",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-                color: "#ef4444",
-                fontSize: "13px",
-                textAlign: "left",
+                position: "fixed",
+                top: contextMenu.y,
+                left: contextMenu.x,
+                zIndex: 1000,
+                background: "#ffffff",
+                borderRadius: "8px",
+                border: "1px solid rgba(0, 0, 0, 0.08)",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
+                padding: "4px",
+                minWidth: "140px",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.06)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
             >
-              <Trash2 size={13} strokeWidth={1.75} />
-              Delete note
-            </button>
-          </div>
-        </>
-      )}
+              <button
+                onClick={handleDelete}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "7px 10px",
+                  background: "none",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  color: "#ef4444",
+                  fontSize: "13px",
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.06)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+              >
+                <Trash2 size={13} strokeWidth={1.75} />
+                {deleteLabel}
+              </button>
+            </div>
+          </>
+        );
+      })()}
     </aside>
   );
 });

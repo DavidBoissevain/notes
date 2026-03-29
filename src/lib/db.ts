@@ -170,6 +170,13 @@ export async function deleteNote(id: string): Promise<void> {
   await db.execute("DELETE FROM notes WHERE id = $1", [id]);
 }
 
+export async function deleteNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+  await db.execute(`DELETE FROM notes WHERE id IN (${placeholders})`, ids);
+}
+
 export async function searchNotes(query: string, folderId?: string): Promise<Note[]> {
   const db = await getDb();
   const pattern = `%${query}%`;

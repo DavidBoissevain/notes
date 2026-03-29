@@ -135,16 +135,10 @@ body::-webkit-scrollbar {
   cursor: col-resize;
   flex-shrink: 0;
   background: transparent;
-  transition: background 0.15s;
   position: relative;
   z-index: 10;
   margin-left: -3px;
   margin-right: -2px;
-}
-
-.sidebar-resize-handle:hover,
-.sidebar-resize-handle:active {
-  background: rgba(0, 0, 0, 0.08);
 }
 
 /* TipTap editor */

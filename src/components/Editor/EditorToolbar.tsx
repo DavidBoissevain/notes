@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import {
-  ChevronLeft,
-  ChevronRight,
   MoreVertical,
   Info,
+  Trash2,
+  FileText,
 } from "lucide-react";
 import { timeAgo } from "../../lib/timeAgo";
 
@@ -12,28 +12,20 @@ interface EditorToolbarProps {
   editor: Editor;
   formatBarVisible: boolean;
   onToggleFormatBar: () => void;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  onGoBack: () => void;
-  onGoForward: () => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   counts: { words: number; chars: number } | null;
   selectedNote?: { created_at: number; updated_at: number } | null;
+  onDeleteNote?: () => void;
+  onCopyMarkdown?: () => void;
+  readOnly?: boolean;
 }
-
-// Shared color palette — everything uses the same base gray
-const COLOR = "rgba(0,0,0,0.4)";
-const COLOR_HOVER = "rgba(0,0,0,0.65)";
-const COLOR_DISABLED = "rgba(0,0,0,0.15)";
 
 function NavButton({
   onClick,
-  disabled,
   children,
   title,
 }: {
   onClick: () => void;
-  disabled?: boolean;
   children: React.ReactNode;
   title?: string;
 }) {
@@ -42,7 +34,6 @@ function NavButton({
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
       title={title}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -52,11 +43,11 @@ function NavButton({
         borderRadius: 5,
         border: "none",
         background: "transparent",
-        cursor: disabled ? "default" : "pointer",
+        cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: disabled ? COLOR_DISABLED : hovered ? COLOR_HOVER : COLOR,
+        color: hovered ? "var(--text-icon-hover)" : "var(--text-icon)",
         transition: "color 0.1s",
         padding: 0,
         flexShrink: 0,
@@ -71,21 +62,21 @@ export function EditorToolbar({
   editor,
   formatBarVisible: _,
   onToggleFormatBar,
-  canGoBack,
-  canGoForward,
-  onGoBack,
-  onGoForward,
   scrollRef,
   counts,
   selectedNote,
+  onDeleteNote,
+  onCopyMarkdown,
+  readOnly,
 }: EditorToolbarProps) {
   const [visible, setVisible] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const infoRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
-  // Auto-hide: hide on typing, show on mouse move or idle
   useEffect(() => {
     const handleUpdate = () => {
       setVisible(false);
@@ -100,7 +91,6 @@ export function EditorToolbar({
     };
   }, [editor]);
 
-  // Show on mouse move over editor scroll area
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -131,8 +121,19 @@ export function EditorToolbar({
     return () => document.removeEventListener("mousedown", handler);
   }, [infoOpen]);
 
+  // Close more menu on click outside
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [moreOpen]);
+
   const [biuHovered, setBiuHovered] = useState(false);
-  const [moreHovered, setMoreHovered] = useState(false);
 
   return (
     <div
@@ -151,17 +152,7 @@ export function EditorToolbar({
         WebkitUserSelect: "none",
       }}
     >
-      {/* Back / Forward — large thin chevrons like Bear */}
-      <NavButton onClick={onGoBack} disabled={!canGoBack} title="Go back">
-        <ChevronLeft size={26} strokeWidth={1.3} />
-      </NavButton>
-      <NavButton onClick={onGoForward} disabled={!canGoForward} title="Go forward">
-        <ChevronRight size={26} strokeWidth={1.3} />
-      </NavButton>
-
-      <div style={{ width: 20 }} />
-
-      {/* BIU — Bear style: B bold, I italic serif, U underlined, uniform color */}
+      {/* BIU toggle */}
       <button
         onClick={onToggleFormatBar}
         onMouseEnter={() => setBiuHovered(true)}
@@ -178,7 +169,7 @@ export function EditorToolbar({
           justifyContent: "center",
           padding: "0 2px",
           gap: 1.5,
-          color: biuHovered ? COLOR_HOVER : COLOR,
+          color: biuHovered ? "var(--text-icon-hover)" : "var(--text-icon)",
           transition: "color 0.1s",
           flexShrink: 0,
           fontFamily: "inherit",
@@ -198,44 +189,43 @@ export function EditorToolbar({
           <Info size={22} strokeWidth={1.3} />
         </NavButton>
 
-        {/* Info popover */}
         {infoOpen && (
           <div
             style={{
               position: "absolute",
               top: "calc(100% + 8px)",
               right: 0,
-              background: "#ffffff",
-              border: "1px solid rgba(0,0,0,0.08)",
+              background: "var(--bg-popover)",
+              border: "1px solid var(--border-light)",
               borderRadius: 10,
-              boxShadow: "0 4px 20px rgba(0,0,0,0.10)",
+              boxShadow: "var(--shadow-popover)",
               padding: "14px 18px",
               zIndex: 100,
               minWidth: 190,
               fontSize: 13,
-              color: "#1c1c1e",
+              color: "var(--text-primary)",
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
-                <span style={{ color: "rgba(0,0,0,0.4)" }}>Words</span>
+                <span style={{ color: "var(--text-icon)" }}>Words</span>
                 <span style={{ fontWeight: 500 }}>{counts?.words ?? 0}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
-                <span style={{ color: "rgba(0,0,0,0.4)" }}>Characters</span>
+                <span style={{ color: "var(--text-icon)" }}>Characters</span>
                 <span style={{ fontWeight: 500 }}>{counts?.chars ?? 0}</span>
               </div>
               {selectedNote && (
                 <>
-                  <div style={{ height: 1, background: "rgba(0,0,0,0.06)", margin: "2px 0" }} />
+                  <div style={{ height: 1, background: "var(--border-light)", margin: "2px 0" }} />
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
-                    <span style={{ color: "rgba(0,0,0,0.4)" }}>Created</span>
+                    <span style={{ color: "var(--text-icon)" }}>Created</span>
                     <span style={{ fontWeight: 500, fontSize: 12 }}>
                       {timeAgo(selectedNote.created_at)}
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
-                    <span style={{ color: "rgba(0,0,0,0.4)" }}>Modified</span>
+                    <span style={{ color: "var(--text-icon)" }}>Modified</span>
                     <span style={{ fontWeight: 500, fontSize: 12 }}>
                       {timeAgo(selectedNote.updated_at)}
                     </span>
@@ -249,30 +239,89 @@ export function EditorToolbar({
 
       <div style={{ width: 12 }} />
 
-      {/* Three dots — same color and weight as everything else */}
-      <button
-        onClick={() => {}}
-        onMouseEnter={() => setMoreHovered(true)}
-        onMouseLeave={() => setMoreHovered(false)}
-        title="More options"
-        style={{
-          width: 26,
-          height: 26,
-          borderRadius: 5,
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: moreHovered ? COLOR_HOVER : COLOR,
-          transition: "color 0.1s",
-          padding: 0,
-          flexShrink: 0,
-        }}
-      >
-        <MoreVertical size={22} strokeWidth={1.3} />
-      </button>
+      {/* Three-dots menu */}
+      <div style={{ position: "relative" }} ref={moreRef}>
+        <NavButton onClick={() => setMoreOpen((p) => !p)} title="More options">
+          <MoreVertical size={22} strokeWidth={1.3} />
+        </NavButton>
+
+        {moreOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 8px)",
+              right: 0,
+              background: "var(--bg-popover)",
+              border: "1px solid var(--border-light)",
+              borderRadius: 10,
+              boxShadow: "var(--shadow-popover)",
+              padding: 4,
+              zIndex: 100,
+              minWidth: 170,
+            }}
+          >
+            {/* Copy as Markdown */}
+            <MenuButton
+              onClick={() => { onCopyMarkdown?.(); setMoreOpen(false); }}
+              icon={<FileText size={14} strokeWidth={1.5} />}
+              label="Copy as Markdown"
+            />
+
+            {/* Delete note */}
+            {!readOnly && (
+              <MenuButton
+                onClick={() => { onDeleteNote?.(); setMoreOpen(false); }}
+                icon={<Trash2 size={14} strokeWidth={1.5} />}
+                label="Delete note"
+                destructive
+              />
+            )}
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function MenuButton({
+  onClick,
+  icon,
+  label,
+  destructive,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  destructive?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        background: hovered
+          ? destructive ? "var(--accent-red-tint)" : "var(--bg-hover)"
+          : "transparent",
+        border: "none",
+        borderRadius: 6,
+        cursor: "pointer",
+        color: destructive ? "var(--accent-red)" : "var(--text-primary)",
+        fontSize: 13,
+        fontWeight: 500,
+        textAlign: "left",
+        fontFamily: "inherit",
+        transition: "background 0.1s",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

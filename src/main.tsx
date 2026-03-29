@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ToastContainer } from "./components/Toast";
 
 if (import.meta.env.DEV) {
   import("tauri-plugin-mcp").then(({ setupPluginListeners }) => {
@@ -11,6 +13,9 @@ if (import.meta.env.DEV) {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+      <ToastContainer />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

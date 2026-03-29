@@ -1,9 +1,22 @@
+use tauri::Manager;
+
+#[tauri::command]
+fn backup_database(app: tauri::AppHandle) -> Result<String, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let db_path = data_dir.join("notes.db");
+    let backup_path = data_dir.join("notes.db.backup");
+    if db_path.exists() {
+        std::fs::copy(&db_path, &backup_path).map_err(|e| e.to_string())?;
+    }
+    Ok("ok".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![]);
+        .invoke_handler(tauri::generate_handler![backup_database]);
 
     #[cfg(debug_assertions)]
     {

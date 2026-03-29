@@ -1,8 +1,9 @@
-import { memo, useMemo, useState } from "react";
-import { Trash2, PanelLeftClose } from "lucide-react";
+import { memo, useMemo, useState, useCallback } from "react";
+import { Trash2, PanelLeftClose, RotateCcw, FileText } from "lucide-react";
 import type { Note } from "../../lib/db";
 import { extractTitle } from "../../lib/extractTitle";
 import { timeAgo } from "../../lib/timeAgo";
+import { htmlToMarkdown } from "../../lib/markdown";
 
 
 interface NoteItemProps {
@@ -17,9 +18,12 @@ interface NoteItemProps {
   nextHighlighted: boolean;
   onSelect: (id: string, e: React.MouseEvent) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
+  onDragStart: (noteId: string) => void;
+  isTrash: boolean;
+  folderName?: string;
 }
 
-const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isFirst, isSidebarFocused, isNew, hideSeparator, prevHighlighted, nextHighlighted, onSelect, onContextMenu }: NoteItemProps) {
+const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isFirst, isSidebarFocused, isNew, hideSeparator, prevHighlighted, nextHighlighted, onSelect, onContextMenu, onDragStart, isTrash, folderName }: NoteItemProps) {
   const { title, preview } = useMemo(() => extractTitle(note.content), [note.content]);
   const displayTitle = title || "New note";
   const displayPreview = preview || "Start writing...";
@@ -28,14 +32,19 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
   const highlighted = isSelected || isMultiSelected;
   const showLeftBar = highlighted && isSidebarFocused;
 
-  // Connected corners: flatten edges that touch an adjacent highlighted item
   const topRadius = highlighted && prevHighlighted ? 0 : 10;
   const bottomRadius = highlighted && nextHighlighted ? 0 : 10;
   const borderRadius = `${topRadius}px ${topRadius}px ${bottomRadius}px ${bottomRadius}px`;
 
-  // Left accent bar corner radius — match the button corners
   const barTopRadius = highlighted && prevHighlighted ? 0 : 2;
   const barBottomRadius = highlighted && nextHighlighted ? 0 : 2;
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (isTrash) { e.preventDefault(); return; }
+    e.dataTransfer.setData("application/note-id", note.id);
+    e.dataTransfer.effectAllowed = "move";
+    onDragStart(note.id);
+  };
 
   return (
     <li
@@ -45,17 +54,15 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
         position: "relative",
       }}
     >
-      {/* Separator line — always rendered for consistent height, transparent when hidden */}
       {!isFirst && (
         <div
           style={{
             height: 1,
-            background: hideSeparator ? "transparent" : "rgba(0, 0, 0, 0.16)",
+            background: hideSeparator ? "transparent" : "var(--border-primary)",
             margin: "0 10px 0 10px",
           }}
         />
       )}
-      {/* Background bridge to previous highlighted item — fills exact gap, no overlap */}
       {highlighted && prevHighlighted && (
         <div
           style={{
@@ -63,13 +70,12 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
             top: -2,
             left: 8,
             right: 8,
-            height: 5, // 2px prev padding + 1px separator + 2px current padding
-            background: "rgba(0, 0, 0, 0.06)",
+            height: 5,
+            background: "var(--bg-active)",
             zIndex: 0,
           }}
         />
       )}
-      {/* Left accent bar bridge to previous highlighted item */}
       {showLeftBar && prevHighlighted && (
         <div
           style={{
@@ -78,12 +84,14 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
             left: 8,
             width: 5,
             height: 5,
-            background: "#4A6FA5",
+            background: "var(--accent-blue)",
             zIndex: 1,
           }}
         />
       )}
       <button
+        draggable={!isTrash}
+        onDragStart={handleDragStart}
         onClick={(e) => onSelect(note.id, e)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -93,7 +101,7 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
         style={{
           width: "100%",
           textAlign: "left",
-          background: highlighted ? "rgba(0, 0, 0, 0.06)" : "transparent",
+          background: highlighted ? "var(--bg-active)" : "transparent",
           border: "none",
           borderRadius,
           cursor: "pointer",
@@ -107,13 +115,12 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
           outline: "none",
         }}
         onMouseEnter={(e) => {
-          if (!highlighted) e.currentTarget.style.background = "rgba(0, 0, 0, 0.03)";
+          if (!highlighted) e.currentTarget.style.background = "var(--bg-hover)";
         }}
         onMouseLeave={(e) => {
           if (!highlighted) e.currentTarget.style.background = "transparent";
         }}
       >
-        {/* Left accent bar */}
         {showLeftBar && (
           <div
             style={{
@@ -123,17 +130,16 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
               bottom: 0,
               width: 5,
               borderRadius: `${barTopRadius}px 0 0 ${barBottomRadius}px`,
-              background: "#4A6FA5",
+              background: "var(--accent-blue)",
               transition: "opacity 0.15s",
             }}
           />
         )}
-        {/* Title */}
         <div
           style={{
             fontSize: "15px",
             fontWeight: 700,
-            color: "#1a1a1a",
+            color: "var(--text-primary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -141,11 +147,10 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
         >
           {displayTitle}
         </div>
-        {/* Preview */}
         <div
           style={{
             fontSize: "15px",
-            color: "rgba(0, 0, 0, 0.45)",
+            color: "var(--text-secondary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -154,16 +159,39 @@ const NoteItem = memo(function NoteItem({ note, isSelected, isMultiSelected, isF
         >
           {displayPreview}
         </div>
-        {/* Timestamp */}
         <div
           style={{
-            fontSize: "12px",
-            color: "rgba(0, 0, 0, 0.28)",
-            fontWeight: 400,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
             marginTop: "1px",
           }}
         >
-          {timestamp}
+          <span
+            style={{
+              fontSize: "12px",
+              color: "var(--text-tertiary)",
+              fontWeight: 400,
+            }}
+          >
+            {timestamp}
+          </span>
+          {folderName && (
+            <span
+              style={{
+                fontSize: "10.5px",
+                fontWeight: 550,
+                color: "var(--accent-blue)",
+                background: "var(--accent-blue-tint)",
+                padding: "1px 6px",
+                borderRadius: 4,
+                whiteSpace: "nowrap",
+                lineHeight: "16px",
+              }}
+            >
+              {folderName}
+            </span>
+          )}
         </div>
       </button>
     </li>
@@ -178,20 +206,38 @@ interface NoteListProps {
   onSelect: (id: string, e?: React.MouseEvent) => void;
   onDelete: (id: string) => void;
   onDeleteSelected: (ids: string[]) => void;
+  onRestore: (id: string) => void;
   searchQuery: string;
   sidebarFocused: boolean;
   onToggleSidebar: () => void;
   collapsed: boolean;
   style?: React.CSSProperties;
+  isTrash: boolean;
+  currentFolderId: string;
+  globalSearch: boolean;
+  folderNameMap: Map<string, string>;
 }
 
-export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds, newNoteId, onSelect, onDelete, onDeleteSelected, searchQuery, sidebarFocused, onToggleSidebar, collapsed, style }: NoteListProps) {
+export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds, newNoteId, onSelect, onDelete, onDeleteSelected, onRestore, searchQuery, sidebarFocused, onToggleSidebar, collapsed, style, isTrash, globalSearch, folderNameMap }: NoteListProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [, setDraggingNoteId] = useState<string | null>(null);
 
   const handleContextMenu = useMemo(
     () => (id: string, x: number, y: number) => setContextMenu({ id, x, y }),
     []
   );
+
+  const handleDragStart = useCallback((noteId: string) => {
+    setDraggingNoteId(noteId);
+  }, []);
+
+  const handleCopyMarkdown = useCallback((noteId: string) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (!note) return;
+    const md = htmlToMarkdown(note.content);
+    navigator.clipboard.writeText(md);
+    setContextMenu(null);
+  }, [notes]);
 
   return (
     <aside
@@ -202,8 +248,8 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
       {/* Note list */}
       <ul style={{ listStyle: "none", padding: "8px 0", overflowY: "auto", flex: 1, minHeight: 0 }}>
         {notes.length === 0 && searchQuery && (
-          <li style={{ padding: "32px 16px", textAlign: "center", color: "rgba(0, 0, 0, 0.25)", fontSize: "12.5px" }}>
-            No results for &ldquo;{searchQuery}&rdquo;
+          <li style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "12.5px" }}>
+            No results
           </li>
         )}
         {notes.map((note, i) => {
@@ -226,12 +272,15 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
               nextHighlighted={highlighted && nextHL}
               onSelect={onSelect}
               onContextMenu={handleContextMenu}
+              onDragStart={handleDragStart}
+              isTrash={isTrash}
+              folderName={globalSearch ? folderNameMap.get(note.folder_id) : undefined}
             />
           );
         })}
       </ul>
 
-      {/* Sidebar collapse button — bottom left */}
+      {/* Sidebar collapse button */}
       <div
         style={{
           padding: "8px 12px",
@@ -251,16 +300,16 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "rgba(0, 0, 0, 0.3)",
+            color: "var(--text-muted)",
             transition: "background 0.1s, color 0.1s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-            e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)";
+            e.currentTarget.style.background = "var(--bg-hover-strong)";
+            e.currentTarget.style.color = "var(--text-icon-hover)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)";
+            e.currentTarget.style.color = "var(--text-muted)";
           }}
         >
           <PanelLeftClose size={16} strokeWidth={1.5} />
@@ -270,15 +319,7 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
       {contextMenu && (() => {
         const multiCount = selectedIds.size;
         const isContextInSelection = multiCount > 0 && selectedIds.has(contextMenu.id);
-        const deleteLabel = isContextInSelection ? `Delete ${multiCount} notes` : "Delete note";
-        const handleDelete = () => {
-          if (isContextInSelection) {
-            onDeleteSelected([...selectedIds]);
-          } else {
-            onDelete(contextMenu.id);
-          }
-          setContextMenu(null);
-        };
+
         return (
           <>
             <div
@@ -291,16 +332,76 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
                 top: contextMenu.y,
                 left: contextMenu.x,
                 zIndex: 1000,
-                background: "#ffffff",
+                background: "var(--bg-popover)",
                 borderRadius: "8px",
-                border: "1px solid rgba(0, 0, 0, 0.08)",
-                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
+                border: "1px solid var(--border-light)",
+                boxShadow: "var(--shadow-menu)",
                 padding: "4px",
-                minWidth: "140px",
+                minWidth: "160px",
               }}
             >
+              {/* Copy as Markdown */}
+              {!isContextInSelection && (
+                <button
+                  onClick={() => handleCopyMarkdown(contextMenu.id)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "7px 10px",
+                    background: "none",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  <FileText size={13} strokeWidth={1.75} />
+                  Copy as Markdown
+                </button>
+              )}
+
+              {/* Restore (trash only) */}
+              {isTrash && !isContextInSelection && (
+                <button
+                  onClick={() => { onRestore(contextMenu.id); setContextMenu(null); }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "7px 10px",
+                    background: "none",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    color: "var(--accent-blue)",
+                    fontSize: "13px",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-blue-tint)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  <RotateCcw size={13} strokeWidth={1.75} />
+                  Restore
+                </button>
+              )}
+
+              {/* Delete */}
               <button
-                onClick={handleDelete}
+                onClick={() => {
+                  if (isContextInSelection) {
+                    onDeleteSelected([...selectedIds]);
+                  } else {
+                    onDelete(contextMenu.id);
+                  }
+                  setContextMenu(null);
+                }}
                 style={{
                   width: "100%",
                   display: "flex",
@@ -311,15 +412,18 @@ export const NoteList = memo(function NoteList({ notes, selectedId, selectedIds,
                   border: "none",
                   borderRadius: "5px",
                   cursor: "pointer",
-                  color: "#ef4444",
+                  color: "var(--accent-red)",
                   fontSize: "13px",
                   textAlign: "left",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.06)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-red-tint)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
               >
                 <Trash2 size={13} strokeWidth={1.75} />
-                {deleteLabel}
+                {isTrash
+                  ? (isContextInSelection ? `Delete ${multiCount} permanently` : "Delete permanently")
+                  : (isContextInSelection ? `Delete ${multiCount} notes` : "Delete note")
+                }
               </button>
             </div>
           </>

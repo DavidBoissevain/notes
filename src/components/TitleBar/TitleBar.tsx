@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, SquarePen, Search, X, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Check } from "lucide-react";
+import { AppIcon, ICON_COLORS } from "../AppIcon";
 import type { Folder as FolderType } from "../../lib/db";
+import { TRASH_FOLDER_ID } from "../../lib/db";
 import { getFolderIcon, FOLDER_ICONS } from "../../lib/folderIcons";
+import type { Theme } from "../../lib/theme";
 
 const win = getCurrentWindow();
 
@@ -30,13 +33,22 @@ interface TitleBarProps {
   onSelectFolder: (id: string) => void;
   onCreateFolder: (name: string, icon: string) => void;
   onDeleteFolder: (id: string) => void;
+  onGetFolderNoteCount: (id: string) => Promise<number>;
   onUpdateFolderIcon: (id: string, icon: string) => void;
   onNewNote: () => void;
-  onToggleSearch: () => void;
+  onToggleSearch: (global?: boolean) => void;
   onCloseSearch: () => void;
   searchOpen: boolean;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  globalSearch: boolean;
+  theme: Theme;
+  onToggleTheme: () => void;
+  onMoveNoteToFolder: (noteId: string, folderId: string) => void;
+  isTrash: boolean;
+  editorTyping: boolean;
+  iconColor: string;
+  onIconColorChange: (color: string) => void;
 }
 
 export function TitleBar({
@@ -49,6 +61,7 @@ export function TitleBar({
   onSelectFolder,
   onCreateFolder,
   onDeleteFolder,
+  onGetFolderNoteCount,
   onUpdateFolderIcon,
   onNewNote,
   onToggleSearch,
@@ -56,20 +69,33 @@ export function TitleBar({
   searchOpen,
   searchQuery,
   onSearchChange,
+  globalSearch,
+  theme,
+  onToggleTheme,
+  onMoveNoteToFolder,
+  isTrash,
+  editorTyping,
+  iconColor,
+  onIconColorChange,
 }: TitleBarProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderIcon, setNewFolderIcon] = useState("folder");
   const [editingIconForId, setEditingIconForId] = useState<string | null>(null);
+  const [iconPopoverPos, setIconPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; noteCount: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const iconPopoverRef = useRef<HTMLDivElement>(null);
   const folderBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const currentFolder = folders.find((f) => f.id === currentFolderId);
+  const currentFolder = isTrash
+    ? { id: TRASH_FOLDER_ID, name: "Trash", icon: "trash" }
+    : folders.find((f) => f.id === currentFolderId);
   const currentFolderName = currentFolder?.name ?? "Notes";
-  const CurrentFolderIcon = getFolderIcon(currentFolder?.icon).Icon;
+  const CurrentFolderIcon = isTrash ? Trash2 : getFolderIcon(currentFolder?.icon).Icon;
 
   const isLastFolder = folders.length <= 1;
 
@@ -78,12 +104,14 @@ export function TitleBar({
     if (!popoverOpen) return;
     const handler = (e: Event) => {
       if (folderBtnRef.current?.contains(e.target as Node)) return;
+      if (iconPopoverRef.current?.contains(e.target as Node)) return;
       if (!popoverRef.current?.contains(e.target as Node)) {
         setPopoverOpen(false);
         setCreatingFolder(false);
         setNewFolderName("");
         setNewFolderIcon("folder");
         setEditingIconForId(null);
+        setIconPopoverPos(null);
       }
     };
     document.addEventListener("pointerdown", handler);
@@ -104,6 +132,27 @@ export function TitleBar({
     }
   }, [searchOpen]);
 
+  // Open folder popover when dragging a note over the folder button
+  const [dragOverFolder, setDragOverFolder] = useState(false);
+  useEffect(() => {
+    if (dragOverFolder && !popoverOpen) {
+      const timer = setTimeout(() => setPopoverOpen(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [dragOverFolder, popoverOpen]);
+
+  const handleRequestDelete = useCallback(async (folder: FolderType) => {
+    const noteCount = await onGetFolderNoteCount(folder.id);
+    setDeleteConfirm({ id: folder.id, name: folder.name, noteCount });
+  }, [onGetFolderNoteCount]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteConfirm) return;
+    onDeleteFolder(deleteConfirm.id);
+    setDeleteConfirm(null);
+    setPopoverOpen(false);
+  }, [deleteConfirm, onDeleteFolder]);
+
   const handleCreateFolder = () => {
     const name = newFolderName.trim();
     if (name) {
@@ -121,7 +170,7 @@ export function TitleBar({
       style={{
         height: "52px",
         flexShrink: 0,
-        background: "#ffffff",
+        background: "var(--bg-primary)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -139,13 +188,13 @@ export function TitleBar({
             top: 0,
             bottom: 0,
             width: 1,
-            background: "rgba(0, 0, 0, 0.16)",
+            background: "var(--border-primary)",
             zIndex: 1,
           }}
         />
       )}
 
-      {/* Left section: folder picker + compose/search buttons — fixed to sidebar width */}
+      {/* Left section: folder picker + compose/search buttons */}
       <div
         style={{
           width: sidebarCollapsed ? "auto" : sidebarWidth,
@@ -177,6 +226,9 @@ export function TitleBar({
                 <button
                   ref={folderBtnRef}
                   onClick={() => setPopoverOpen((p) => !p)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverFolder(true); }}
+                  onDragLeave={() => setDragOverFolder(false)}
+                  onDrop={() => setDragOverFolder(false)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -188,13 +240,13 @@ export function TitleBar({
                     borderRadius: 6,
                     fontSize: "19px",
                     fontWeight: 700,
-                    color: "#1c1c1e",
+                    color: "var(--text-primary)",
                     letterSpacing: -0.4,
                     fontFamily: "inherit",
                     transition: "background 0.1s",
                     maxWidth: "100%",
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 >
                   <CurrentFolderIcon size={18} strokeWidth={1.5} style={{ flexShrink: 0, marginRight: 4, opacity: 0.5 }} />
@@ -203,7 +255,7 @@ export function TitleBar({
                     size={14}
                     strokeWidth={2}
                     style={{
-                      color: "rgba(0,0,0,0.35)",
+                      color: "var(--text-icon)",
                       marginTop: 1,
                       flexShrink: 0,
                       transform: popoverOpen ? "rotate(180deg)" : "none",
@@ -217,21 +269,35 @@ export function TitleBar({
             {/* Search input */}
             <div className={`titlebar-search${searchOpen ? "" : " hidden"}`} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <div style={{ position: "relative", flex: 1 }}>
-                <Search
-                  size={13}
-                  style={{
-                    position: "absolute",
-                    left: 9,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "rgba(0,0,0,0.25)",
-                    pointerEvents: "none",
-                  }}
-                />
+                {globalSearch ? (
+                  <Globe
+                    size={13}
+                    style={{
+                      position: "absolute",
+                      left: 9,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--accent-blue)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                ) : (
+                  <Search
+                    size={13}
+                    style={{
+                      position: "absolute",
+                      left: 9,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--text-muted)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                )}
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search"
+                  placeholder={globalSearch ? "Search all folders" : "Search"}
                   value={searchQuery}
                   onChange={(e) => onSearchChange(e.target.value)}
                   onKeyDown={(e) => {
@@ -243,12 +309,12 @@ export function TitleBar({
                     padding: "7px 30px 7px 28px",
                     fontSize: 14,
                     borderRadius: 8,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    background: "rgba(0,0,0,0.03)",
+                    border: `1px solid var(--border-input)`,
+                    background: "var(--bg-input)",
                     outline: "none",
                     fontFamily: "inherit",
                     fontWeight: 550,
-                    color: "rgba(0,0,0,0.8)",
+                    color: "var(--text-primary)",
                     boxSizing: "border-box",
                   }}
                 />
@@ -268,11 +334,11 @@ export function TitleBar({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "rgba(0,0,0,0.3)",
+                    color: "var(--text-muted)",
                     padding: 0,
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(0,0,0,0.6)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(0,0,0,0.3)"; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-icon-hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
                 >
                   <X size={14} strokeWidth={1.5} />
                 </button>
@@ -281,30 +347,32 @@ export function TitleBar({
           </div>
         </div>
 
-      {/* Compose + Search — always visible, outside overflow:hidden */}
+      {/* Compose + Search — always visible */}
       <div style={{ display: "flex", gap: "2px", marginLeft: sidebarCollapsed ? 16 : 8, flexShrink: 0, transition: "margin 0.2s ease" }}>
-        <div
-          style={{
-            width: searchOpen ? 0 : 32,
-            opacity: searchOpen ? 0 : 1,
-            overflow: "hidden",
-            flexShrink: 0,
-            transition: "width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
-          }}
-        >
-          <SidebarButton onClick={onNewNote} label="New note">
-            <SquarePen size={18} strokeWidth={1.5} />
-          </SidebarButton>
-        </div>
+        {!isTrash && (
+          <div
+            style={{
+              width: searchOpen ? 0 : 32,
+              opacity: searchOpen ? 0 : 1,
+              overflow: "hidden",
+              flexShrink: 0,
+              transition: "width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+            }}
+          >
+            <SidebarButton onClick={onNewNote} label="New note">
+              <SquarePen size={18} strokeWidth={1.5} />
+            </SidebarButton>
+          </div>
+        )}
         {!sidebarCollapsed && (
-          <SidebarButton onClick={onToggleSearch} label="Search" isActive={searchOpen}>
+          <SidebarButton onClick={() => onToggleSearch()} label="Search" isActive={searchOpen}>
             <Search size={18} strokeWidth={1.5} />
           </SidebarButton>
         )}
       </div>
       </div>
 
-      {/* Folder popover — rendered at TitleBar root to escape overflow:hidden */}
+      {/* Folder popover */}
       {popoverOpen && (
         <div
           ref={popoverRef}
@@ -312,10 +380,10 @@ export function TitleBar({
             position: "absolute",
             top: "calc(100% + 2px)",
             left: 20,
-            background: "#ffffff",
-            border: "1px solid rgba(0,0,0,0.08)",
+            background: "var(--bg-popover)",
+            border: "1px solid var(--border-light)",
             borderRadius: 10,
-            boxShadow: "0 6px 24px rgba(0,0,0,0.12)",
+            boxShadow: "var(--shadow-popover)",
             padding: 4,
             zIndex: 1000,
             minWidth: 200,
@@ -330,39 +398,55 @@ export function TitleBar({
             return (
               <div key={folder.id}>
                 <FolderItem
+                  folderId={folder.id}
                   name={folder.name}
                   isActive={isActive}
                   icon={<FolderIconComp size={15} strokeWidth={1.5} />}
                   onIconClick={(e) => {
                     e.stopPropagation();
-                    setEditingIconForId(isEditingIcon ? null : folder.id);
+                    if (isEditingIcon) {
+                      setEditingIconForId(null);
+                      setIconPopoverPos(null);
+                    } else {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setEditingIconForId(folder.id);
+                      setIconPopoverPos({ top: rect.top, left: rect.right + 6 });
+                    }
                   }}
                   onDelete={canDelete ? () => {
-                    onDeleteFolder(folder.id);
-                    setPopoverOpen(false);
+                    handleRequestDelete(folder);
                   } : undefined}
                   onClick={() => {
                     onSelectFolder(folder.id);
                     setPopoverOpen(false);
                     setCreatingFolder(false);
                     setEditingIconForId(null);
+                    setIconPopoverPos(null);
                   }}
+                  onMoveNoteToFolder={onMoveNoteToFolder}
                 />
-                {isEditingIcon && (
-                  <IconGrid
-                    selectedIcon={folder.icon}
-                    onSelect={(icon) => {
-                      onUpdateFolderIcon(folder.id, icon);
-                      setEditingIconForId(null);
-                    }}
-                  />
-                )}
               </div>
             );
           })}
 
           {/* Divider */}
-          <div style={{ height: 1, background: "rgba(0,0,0,0.06)", margin: "4px 0" }} />
+          <div style={{ height: 1, background: "var(--border-light)", margin: "4px 0" }} />
+
+          {/* Trash folder */}
+          <FolderItem
+            folderId={TRASH_FOLDER_ID}
+            name="Trash"
+            isActive={currentFolderId === TRASH_FOLDER_ID}
+            icon={<Trash2 size={15} strokeWidth={1.5} />}
+            onClick={() => {
+              onSelectFolder(TRASH_FOLDER_ID);
+              setPopoverOpen(false);
+            }}
+            onMoveNoteToFolder={onMoveNoteToFolder}
+          />
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "var(--border-light)", margin: "4px 0" }} />
 
           {/* New folder */}
           {creatingFolder ? (
@@ -389,17 +473,20 @@ export function TitleBar({
                   width: "100%",
                   padding: "5px 8px",
                   fontSize: 13,
-                  border: "1px solid rgba(0,0,0,0.1)",
+                  border: "1px solid var(--border-input)",
                   borderRadius: 6,
                   outline: "none",
                   fontFamily: "inherit",
                   boxSizing: "border-box",
                   marginTop: 6,
+                  background: "var(--bg-input)",
+                  color: "var(--text-primary)",
                 }}
               />
             </div>
           ) : (
             <FolderItem
+              folderId=""
               name="New Folder"
               icon={<Plus size={14} strokeWidth={1.5} />}
               onClick={() => setCreatingFolder(true)}
@@ -408,22 +495,149 @@ export function TitleBar({
         </div>
       )}
 
+      {/* Icon picker popover — floats beside the folder menu */}
+      {editingIconForId && iconPopoverPos && (() => {
+        const folder = folders.find((f) => f.id === editingIconForId);
+        if (!folder) return null;
+        return (
+          <div
+            ref={iconPopoverRef}
+            style={{
+              position: "fixed",
+              top: iconPopoverPos.top,
+              left: iconPopoverPos.left,
+              background: "var(--bg-popover)",
+              border: "1px solid var(--border-light)",
+              borderRadius: 10,
+              boxShadow: "var(--shadow-popover)",
+              padding: 6,
+              zIndex: 1001,
+              width: 170,
+            }}
+          >
+            <IconGrid
+              selectedIcon={folder.icon}
+              onSelect={(icon) => {
+                onUpdateFolderIcon(folder.id, icon);
+                setEditingIconForId(null);
+                setIconPopoverPos(null);
+              }}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "var(--overlay-bg)",
+              zIndex: 2000,
+            }}
+            onClick={() => setDeleteConfirm(null)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "var(--bg-popover)",
+              borderRadius: 12,
+              boxShadow: "var(--shadow-dialog)",
+              padding: "24px",
+              zIndex: 2001,
+              width: 340,
+              fontFamily: "inherit",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: "var(--accent-red-bg)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}>
+                <AlertTriangle size={18} strokeWidth={1.5} style={{ color: "var(--accent-red)" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
+                  Delete "{deleteConfirm.name}"?
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  {deleteConfirm.noteCount === 0
+                    ? "This folder is empty. It will be permanently deleted."
+                    : `This will permanently delete ${deleteConfirm.noteCount} note${deleteConfirm.noteCount === 1 ? "" : "s"} in this folder. This cannot be undone.`}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                style={{
+                  padding: "7px 16px",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  border: "1px solid var(--border-input)",
+                  background: "var(--bg-popover)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  color: "var(--text-primary)",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-popover)"; }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                style={{
+                  padding: "7px 16px",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  border: "none",
+                  background: "var(--accent-red-strong)",
+                  color: "#ffffff",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  transition: "background 0.1s",
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Spacer */}
       <div data-tauri-drag-region style={{ flex: 1 }} />
 
-      {/* Right: window controls */}
-      <div style={{ display: "flex" }}>
+      {/* Right: settings + window controls */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <SettingsMenu theme={theme} onToggleTheme={onToggleTheme} faded={editorTyping} iconColor={iconColor} onIconColorChange={onIconColorChange} />
+
+        <div style={{ width: 4 }} />
+
         <WindowButton
           onClick={() => win.minimize()}
           label="Minimize"
-          hoverColor="rgba(0, 0, 0, 0.06)"
         >
           <span style={mdl2Style}>{MDL2.minimize}</span>
         </WindowButton>
         <WindowButton
           onClick={() => win.toggleMaximize()}
           label={maximized ? "Restore" : "Maximize"}
-          hoverColor="rgba(0, 0, 0, 0.06)"
         >
           <span style={mdl2Style}>
             {maximized ? MDL2.restore : MDL2.maximize}
@@ -432,13 +646,161 @@ export function TitleBar({
         <WindowButton
           onClick={() => win.close()}
           label="Close"
-          hoverColor="rgba(196, 43, 28, 0.88)"
-          hoverIconColor="white"
           isClose
         >
           <span style={mdl2Style}>{MDL2.close}</span>
         </WindowButton>
       </div>
+    </div>
+  );
+}
+
+function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChange }: { theme: Theme; onToggleTheme: () => void; faded?: boolean; iconColor: string; onIconColorChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: Event) => {
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
+  }, [open]);
+
+  return (
+    <div style={{ position: "relative", opacity: faded && !open ? 0 : 1, transition: "opacity 0.2s ease", pointerEvents: faded && !open ? "none" : "auto" }}>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((p) => !p)}
+        aria-label="Settings"
+        style={{
+          width: 32,
+          height: 32,
+          border: "none",
+          background: "transparent",
+          borderRadius: 7,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: open ? "var(--text-icon-hover)" : "var(--text-icon)",
+          transition: "background 0.1s, color 0.1s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "var(--bg-hover-strong)";
+          e.currentTarget.style.color = "var(--text-icon-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = open ? "var(--text-icon-hover)" : "var(--text-icon)";
+        }}
+      >
+        <Settings size={16} strokeWidth={1.5} />
+      </button>
+
+      {open && (
+        <div
+          ref={menuRef}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            background: "var(--bg-popover)",
+            border: "1px solid var(--border-light)",
+            borderRadius: 10,
+            boxShadow: "var(--shadow-popover)",
+            padding: 4,
+            zIndex: 1000,
+            minWidth: 180,
+          }}
+        >
+          {/* Icon preview */}
+          <div style={{ display: "flex", justifyContent: "center", padding: "12px 10px 8px" }}>
+            <AppIcon color={iconColor} size={64} />
+          </div>
+
+          {/* Color swatches */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 10px 10px", justifyContent: "center" }}>
+            {ICON_COLORS.map((c) => (
+              <button
+                key={c.id}
+                title={c.label}
+                onClick={() => onIconColorChange(c.hex)}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  border: iconColor === c.hex ? "2px solid var(--text-primary)" : "2px solid transparent",
+                  background: c.hex,
+                  cursor: "pointer",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "border-color 0.1s, transform 0.1s",
+                }}
+              >
+                {iconColor === c.hex && <Check size={12} strokeWidth={2.5} color="white" />}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ height: 1, background: "var(--border-light)", margin: "0 6px 4px" }} />
+
+          {/* Theme row */}
+          <SettingsRow
+            label="Theme"
+            icon={theme === "light" ? <Sun size={14} strokeWidth={1.5} /> : <Moon size={14} strokeWidth={1.5} />}
+            action={
+              <button
+                onMouseDown={(e) => { e.preventDefault(); onToggleTheme(); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  border: "none",
+                  background: "var(--bg-active)",
+                  borderRadius: 6,
+                  padding: "3px 10px",
+                  fontSize: 12,
+                  fontWeight: 550,
+                  color: "var(--text-primary)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover-strong)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-active)"; }}
+              >
+                {theme === "light" ? "Light" : "Dark"}
+                <ChevronDown size={11} style={{ opacity: 0.5, transform: "rotate(-90deg)" }} />
+              </button>
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsRow({ label, icon, action }: { label: string; icon: React.ReactNode; action: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 6,
+        minHeight: 32,
+      }}
+    >
+      <span style={{ color: "var(--text-icon)", display: "flex", alignItems: "center", flexShrink: 0 }}>{icon}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", flex: 1 }}>{label}</span>
+      {action}
     </div>
   );
 }
@@ -470,25 +832,25 @@ function IconGrid({
               width: 30,
               height: 30,
               border: "none",
-              background: isSelected ? "rgba(0,0,0,0.08)" : "transparent",
+              background: isSelected ? "var(--bg-active)" : "transparent",
               borderRadius: 6,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: isSelected ? "#1c1c1e" : "rgba(0,0,0,0.45)",
+              color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
               transition: "background 0.1s, color 0.1s",
             }}
             onMouseEnter={(e) => {
               if (!isSelected) {
-                e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-                e.currentTarget.style.color = "rgba(0,0,0,0.7)";
+                e.currentTarget.style.background = "var(--bg-hover)";
+                e.currentTarget.style.color = "var(--text-icon-hover)";
               }
             }}
             onMouseLeave={(e) => {
               if (!isSelected) {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "rgba(0,0,0,0.45)";
+                e.currentTarget.style.color = "var(--text-secondary)";
               }
             }}
           >
@@ -501,36 +863,70 @@ function IconGrid({
 }
 
 function FolderItem({
+  folderId,
   name,
   isActive,
   icon,
   onIconClick,
   onDelete,
   onClick,
+  onMoveNoteToFolder,
 }: {
+  folderId: string;
   name: string;
   isActive?: boolean;
   icon?: React.ReactNode;
   onIconClick?: (e: React.MouseEvent) => void;
   onDelete?: () => void;
   onClick: () => void;
+  onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const DefaultIcon = getFolderIcon("folder").Icon;
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!onMoveNoteToFolder || !folderId) return;
+    const noteId = e.dataTransfer.types.includes("application/note-id");
+    if (!noteId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    setDragOver(false);
+    if (!onMoveNoteToFolder || !folderId) return;
+    const noteId = e.dataTransfer.getData("application/note-id");
+    if (noteId) {
+      onMoveNoteToFolder(noteId, folderId);
+    }
+  };
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className="folder-drop-target"
       style={{
         display: "flex",
         alignItems: "center",
         borderRadius: 6,
         transition: "background 0.1s",
-        background: isActive
-          ? "rgba(0,0,0,0.05)"
+        background: dragOver
+          ? "var(--accent-blue-tint)"
+          : isActive
+          ? "var(--bg-hover-strong)"
           : hovered
-          ? "rgba(0,0,0,0.03)"
+          ? "var(--bg-hover)"
           : "transparent",
+        outline: dragOver ? "2px solid var(--accent-blue)" : "none",
+        outlineOffset: -2,
       }}
     >
       {/* Icon — clickable to edit */}
@@ -546,13 +942,13 @@ function FolderItem({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "rgba(0,0,0,0.4)",
+          color: "var(--text-icon)",
           borderRadius: 6,
           padding: 0,
           transition: "color 0.1s",
         }}
-        onMouseEnter={(e) => { if (onIconClick) e.currentTarget.style.color = "rgba(0,0,0,0.7)"; }}
-        onMouseLeave={(e) => { if (onIconClick) e.currentTarget.style.color = "rgba(0,0,0,0.4)"; }}
+        onMouseEnter={(e) => { if (onIconClick) e.currentTarget.style.color = "var(--text-icon-hover)"; }}
+        onMouseLeave={(e) => { if (onIconClick) e.currentTarget.style.color = "var(--text-icon)"; }}
         title={onIconClick ? "Change icon" : undefined}
       >
         {icon ?? <DefaultIcon size={15} strokeWidth={1.5} />}
@@ -569,7 +965,7 @@ function FolderItem({
           padding: "7px 4px",
           fontSize: 14,
           fontWeight: isActive ? 600 : 500,
-          color: "#1c1c1e",
+          color: "var(--text-primary)",
           textAlign: "left",
           fontFamily: "inherit",
         }}
@@ -593,18 +989,18 @@ function FolderItem({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "rgba(0,0,0,0.25)",
+            color: "var(--text-muted)",
             opacity: hovered ? 1 : 0,
             transition: "opacity 0.1s, color 0.1s, background 0.1s",
             padding: 0,
             marginRight: 4,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = "rgba(180,40,30,0.7)";
-            e.currentTarget.style.background = "rgba(180,40,30,0.08)";
+            e.currentTarget.style.color = "var(--accent-red)";
+            e.currentTarget.style.background = "var(--accent-red-tint)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = "rgba(0,0,0,0.25)";
+            e.currentTarget.style.color = "var(--text-muted)";
             e.currentTarget.style.background = "transparent";
           }}
         >
@@ -640,16 +1036,16 @@ function SidebarButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: isActive ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0.4)",
+        color: isActive ? "var(--text-icon-hover)" : "var(--text-icon)",
         transition: "background 0.1s, color 0.1s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-        e.currentTarget.style.color = "rgba(0, 0, 0, 0.7)";
+        e.currentTarget.style.background = "var(--bg-hover-strong)";
+        e.currentTarget.style.color = "var(--text-icon-hover)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = isActive ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0.4)";
+        e.currentTarget.style.color = isActive ? "var(--text-icon-hover)" : "var(--text-icon)";
       }}
     >
       {children}
@@ -661,15 +1057,11 @@ function WindowButton({
   onClick,
   label,
   children,
-  hoverColor,
-  hoverIconColor,
   isClose,
 }: {
   onClick: () => void;
   label: string;
   children: React.ReactNode;
-  hoverColor: string;
-  hoverIconColor?: string;
   isClose?: boolean;
 }) {
   return (
@@ -685,16 +1077,21 @@ function WindowButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "rgba(0, 0, 0, 0.35)",
+        color: "var(--text-icon)",
         transition: "background 0.1s, color 0.1s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = hoverColor;
-        e.currentTarget.style.color = hoverIconColor ?? "rgba(0, 0, 0, 0.7)";
+        if (isClose) {
+          e.currentTarget.style.background = "rgba(196, 43, 28, 0.88)";
+          e.currentTarget.style.color = "white";
+        } else {
+          e.currentTarget.style.background = "var(--bg-active)";
+          e.currentTarget.style.color = "var(--text-icon-hover)";
+        }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
+        e.currentTarget.style.color = "var(--text-icon)";
       }}
     >
       {children}

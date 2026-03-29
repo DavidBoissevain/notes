@@ -42,12 +42,12 @@ function MenuItem({
         border: "none",
         background: hovered
           ? destructive
-            ? "rgba(239, 68, 68, 0.06)"
-            : "rgba(0,0,0,0.05)"
+            ? "var(--accent-red-tint)"
+            : "var(--bg-hover-strong)"
           : "transparent",
         cursor: "pointer",
         fontSize: 13,
-        color: destructive ? "#ef4444" : "#1c1c1e",
+        color: destructive ? "var(--accent-red)" : "var(--text-primary)",
         width: "100%",
         textAlign: "left",
         whiteSpace: "nowrap",
@@ -90,10 +90,10 @@ export function TableContextMenu({ editor, x, y, onClose }: TableContextMenuProp
         top: y,
         left: x,
         zIndex: 1000,
-        background: "#ffffff",
-        border: "1px solid rgba(0,0,0,0.08)",
+        background: "var(--bg-popover)",
+        border: "1px solid var(--border-light)",
         borderRadius: 8,
-        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        boxShadow: "var(--shadow-menu)",
         padding: 4,
         minWidth: 160,
       }}
@@ -104,14 +104,14 @@ export function TableContextMenu({ editor, x, y, onClose }: TableContextMenuProp
       <MenuItem onClick={() => run(() => editor.chain().focus().addRowAfter().run())}>
         <ArrowDown size={13} /> Add row below
       </MenuItem>
-      <div style={{ height: 1, background: "rgba(0,0,0,0.08)", margin: "3px 6px" }} />
+      <div style={{ height: 1, background: "var(--border-light)", margin: "3px 6px" }} />
       <MenuItem onClick={() => run(() => editor.chain().focus().addColumnBefore().run())}>
         <ArrowLeft size={13} /> Add column before
       </MenuItem>
       <MenuItem onClick={() => run(() => editor.chain().focus().addColumnAfter().run())}>
         <ArrowRight size={13} /> Add column after
       </MenuItem>
-      <div style={{ height: 1, background: "rgba(0,0,0,0.08)", margin: "3px 6px" }} />
+      <div style={{ height: 1, background: "var(--border-light)", margin: "3px 6px" }} />
       <MenuItem destructive onClick={() => run(() => editor.chain().focus().deleteRow().run())}>
         <Trash2 size={13} /> Delete row
       </MenuItem>

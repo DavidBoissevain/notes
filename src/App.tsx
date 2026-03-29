@@ -7,7 +7,11 @@ import { Editor, FONT_SIZE_DEFAULT } from "./components/Editor/Editor";
 import { useNotes } from "./hooks/useNotes";
 import { useSearch } from "./hooks/useSearch";
 import { useNoteHistory } from "./hooks/useNoteHistory";
-import { getAllFolders, createFolder, deleteFolder, updateFolderIcon, DEFAULT_FOLDER_ID, type Folder } from "./lib/db";
+import { getAllFolders, createFolder, deleteFolder, updateFolderIcon, getFolderNoteCount, moveNoteToFolder, DEFAULT_FOLDER_ID, TRASH_FOLDER_ID, type Folder } from "./lib/db";
+import { getStoredTheme, storeTheme, applyTheme, type Theme } from "./lib/theme";
+import { showError } from "./lib/toast";
+import { flushPendingSave } from "./hooks/useAutoSave";
+import { htmlToMarkdown } from "./lib/markdown";
 import { PanelLeftOpen } from "lucide-react";
 
 const RESIZE_SIZE = 12;
@@ -44,6 +48,15 @@ function ResizeHandles({ maximized }: { maximized: boolean }) {
 }
 
 export default function App() {
+  // --- Theme state ---
+  const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  useEffect(() => { applyTheme(theme); storeTheme(theme); }, [theme]);
+  const toggleTheme = useCallback(() => setTheme((t) => t === "light" ? "dark" : "light"), []);
+
+  // --- Icon color ---
+  const [iconColor, setIconColor] = useState(() => localStorage.getItem("icon-color") || "#4A6FA5");
+  useEffect(() => { localStorage.setItem("icon-color", iconColor); }, [iconColor]);
+
   // --- Folder state ---
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState(() => {
@@ -51,35 +64,73 @@ export default function App() {
   });
 
   useEffect(() => {
-    getAllFolders().then(setFolders);
+    getAllFolders().then(setFolders).catch(() => showError("Failed to load folders"));
   }, []);
+
+  // Folder name lookup for global search pills
+  const folderNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of folders) map.set(f.id, f.name);
+    return map;
+  }, [folders]);
 
   useEffect(() => {
     localStorage.setItem("current-folder", currentFolderId);
   }, [currentFolderId]);
 
+  const isTrash = currentFolderId === TRASH_FOLDER_ID;
+
   const handleCreateFolder = useCallback(async (name: string, icon: string) => {
-    const folder = await createFolder(name, icon);
-    setFolders((prev) => [...prev, folder]);
-    setCurrentFolderId(folder.id);
+    try {
+      const folder = await createFolder(name, icon);
+      setFolders((prev) => [...prev, folder]);
+      setCurrentFolderId(folder.id);
+    } catch {
+      showError("Failed to create folder");
+    }
+  }, []);
+
+  const handleGetFolderNoteCount = useCallback(async (id: string) => {
+    return getFolderNoteCount(id);
   }, []);
 
   const handleDeleteFolder = useCallback(async (id: string) => {
-    await deleteFolder(id);
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    if (currentFolderId === id) setCurrentFolderId(DEFAULT_FOLDER_ID);
+    try {
+      await deleteFolder(id);
+      setFolders((prev) => prev.filter((f) => f.id !== id));
+      if (currentFolderId === id) setCurrentFolderId(DEFAULT_FOLDER_ID);
+    } catch {
+      showError("Failed to delete folder");
+    }
   }, [currentFolderId]);
 
   const handleUpdateFolderIcon = useCallback(async (id: string, icon: string) => {
-    await updateFolderIcon(id, icon);
-    setFolders((prev) => prev.map((f) => f.id === id ? { ...f, icon } : f));
+    try {
+      await updateFolderIcon(id, icon);
+      setFolders((prev) => prev.map((f) => f.id === id ? { ...f, icon } : f));
+    } catch {
+      showError("Failed to update folder icon");
+    }
   }, []);
 
-  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, removeNotes, refreshNote, loading, newNoteId } = useNotes(currentFolderId);
+  const handleMoveNoteToFolder = useCallback(async (noteId: string, folderId: string) => {
+    try {
+      await moveNoteToFolder(noteId, folderId);
+      refreshFolderRef.current?.();
+    } catch {
+      showError("Failed to move note");
+    }
+  }, []);
+
+  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, removeNotes, softRemoveNote, softRemoveNotes, restoreNote, refreshNote, refreshNotes, loading, newNoteId } = useNotes(currentFolderId);
+  const refreshFolderRef = useRef<(() => void) | null>(null);
+  refreshFolderRef.current = refreshNotes;
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const lastClickedIdRef = useRef<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState(false);
   const [autoFocus, setAutoFocus] = useState(false);
   const [maximized, setMaximized] = useState(false);
 
@@ -87,18 +138,25 @@ export default function App() {
   useEffect(() => {
     setSearchQuery("");
     setSearchOpen(false);
+    setGlobalSearch(false);
   }, [currentFolderId]);
 
-  const toggleSearch = useCallback(() => {
+  const toggleSearch = useCallback((global = false) => {
     setSearchOpen((prev) => {
-      if (prev) setSearchQuery("");
-      return !prev;
+      if (prev && !global) {
+        setSearchQuery("");
+        setGlobalSearch(false);
+        return false;
+      }
+      setGlobalSearch(global);
+      return true;
     });
   }, []);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQuery("");
+    setGlobalSearch(false);
   }, []);
 
   useEffect(() => {
@@ -111,6 +169,19 @@ export default function App() {
       unlistenResize.then(fn => fn());
       unlistenMove.then(fn => fn());
     };
+  }, []);
+
+  // Flush unsaved changes before window closes
+  useEffect(() => {
+    let flushing = false;
+    const promise = getCurrentWindow().onCloseRequested(async (event) => {
+      if (flushing) return;
+      flushing = true;
+      event.preventDefault();
+      await flushPendingSave();
+      getCurrentWindow().close();
+    });
+    return () => { promise.then(fn => fn()); };
   }, []);
 
   // --- Persisted font size ---
@@ -134,16 +205,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed)); }, [sidebarCollapsed]);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((p) => !p), []);
 
-  // Ctrl+\ to toggle sidebar
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "\\") { e.preventDefault(); toggleSidebar(); }
-      if (e.altKey && e.key === "s") { e.preventDefault(); toggleSidebar(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [toggleSidebar]);
-
   // --- Persisted format bar visibility ---
   const [formatBarVisible, setFormatBarVisible] = useState(
     () => localStorage.getItem("format-bar-visible") !== "false",
@@ -155,7 +216,7 @@ export default function App() {
   const [sidebarFocused, setSidebarFocused] = useState(false);
 
   // --- Note history (back/forward) ---
-  const { pushHistory, goBack, goForward, canGoBack, canGoForward } = useNoteHistory(setSelectedId);
+  const { pushHistory } = useNoteHistory(setSelectedId);
 
   // --- Sidebar resize drag ---
   const containerRef = useRef<HTMLDivElement>(null);
@@ -187,7 +248,8 @@ export default function App() {
     document.body.style.userSelect = "none";
   }, []);
 
-  const { results: searchResults } = useSearch(searchQuery, currentFolderId);
+  const searchFolderId = globalSearch ? undefined : currentFolderId;
+  const { results: searchResults } = useSearch(searchQuery, searchFolderId);
   const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
 
   const handleSelectNote = useCallback((id: string, e?: React.MouseEvent) => {
@@ -195,10 +257,8 @@ export default function App() {
     setSidebarFocused(true);
 
     if (e?.ctrlKey || e?.metaKey) {
-      // Ctrl+click: toggle this note in/out of multi-select
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        // First Ctrl+click: seed with current primary selection
         if (next.size === 0 && selectedId) next.add(selectedId);
         if (next.has(id)) {
           next.delete(id);
@@ -212,7 +272,6 @@ export default function App() {
     }
 
     if (e?.shiftKey) {
-      // Shift+click: range select from last clicked to current
       const anchor = lastClickedIdRef.current;
       if (anchor) {
         const ids = displayedNotes.map((n) => n.id);
@@ -228,28 +287,98 @@ export default function App() {
       }
     }
 
-    // Normal click: single select, clear multi-select
     setSelectedIds(new Set());
     lastClickedIdRef.current = id;
+
+    // Global search: if the note is from a different folder, navigate there
+    if (globalSearch) {
+      const note = displayedNotes.find((n) => n.id === id);
+      if (note && note.folder_id !== currentFolderId) {
+        closeSearch();
+        // Set selectedId first so useNotes preserves it after folder reload
+        setSelectedId(id);
+        setCurrentFolderId(note.folder_id);
+        pushHistory(id);
+        return;
+      }
+    }
+
     setSelectedId(id);
     pushHistory(id);
-  }, [setSelectedId, pushHistory, selectedId, displayedNotes]);
+  }, [setSelectedId, pushHistory, selectedId, displayedNotes, globalSearch, currentFolderId, closeSearch]);
 
   const handleDeleteSelected = useCallback(async (ids: string[]) => {
-    await removeNotes(ids);
+    if (isTrash) {
+      await removeNotes(ids);
+    } else {
+      await softRemoveNotes(ids);
+    }
     setSelectedIds(new Set());
-  }, [removeNotes]);
+  }, [removeNotes, softRemoveNotes, isTrash]);
+
+  const handleDeleteNote = useCallback(async (id: string) => {
+    if (isTrash) {
+      await removeNote(id);
+    } else {
+      await softRemoveNote(id);
+    }
+  }, [removeNote, softRemoveNote, isTrash]);
+
+  const handleRestoreNote = useCallback(async (id: string) => {
+    await restoreNote(id);
+  }, [restoreNote]);
 
   const handleNewNote = useCallback(async () => {
+    if (isTrash) return;
     setAutoFocus(true);
     setSidebarFocused(false);
     const id = await newNote();
     if (id) pushHistory(id);
-  }, [newNote, pushHistory]);
+  }, [newNote, pushHistory, isTrash]);
+
+  // --- Keyboard shortcuts: Ctrl+N, Ctrl+F, Ctrl+Shift+F, Ctrl+\, Alt+S ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "\\") { e.preventDefault(); toggleSidebar(); }
+      if (e.altKey && e.key === "s") { e.preventDefault(); toggleSidebar(); }
+
+      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+        e.preventDefault();
+        if (!isTrash) handleNewNote();
+      }
+
+      if (e.ctrlKey && !e.shiftKey && e.key === "f") {
+        e.preventDefault();
+        toggleSearch(false);
+      }
+
+      if (e.ctrlKey && e.shiftKey && e.key === "F") {
+        e.preventDefault();
+        toggleSearch(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggleSidebar, isTrash, handleNewNote, toggleSearch]);
 
   const handleEditorFocus = useCallback(() => {
     setSidebarFocused(false);
   }, []);
+
+  // Editor typing state — used to fade titlebar settings
+  const [editorTyping, setEditorTyping] = useState(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleEditorTyping = useCallback(() => {
+    setEditorTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => setEditorTyping(false), 1500);
+  }, []);
+
+  const handleCopyMarkdown = useCallback(() => {
+    if (!selectedNote?.content) return;
+    const md = htmlToMarkdown(selectedNote.content);
+    navigator.clipboard.writeText(md);
+  }, [selectedNote]);
 
   const noteContent = selectedNote?.content ?? "";
 
@@ -283,6 +412,7 @@ export default function App() {
         onSelectFolder={setCurrentFolderId}
         onCreateFolder={handleCreateFolder}
         onDeleteFolder={handleDeleteFolder}
+        onGetFolderNoteCount={handleGetFolderNoteCount}
         onUpdateFolderIcon={handleUpdateFolderIcon}
         onNewNote={handleNewNote}
         onToggleSearch={toggleSearch}
@@ -290,6 +420,14 @@ export default function App() {
         searchOpen={searchOpen}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        globalSearch={globalSearch}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onMoveNoteToFolder={handleMoveNoteToFolder}
+        isTrash={isTrash}
+        editorTyping={editorTyping}
+        iconColor={iconColor}
+        onIconColorChange={setIconColor}
       />
 
       <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -299,13 +437,18 @@ export default function App() {
           selectedIds={selectedIds}
           newNoteId={newNoteId}
           onSelect={handleSelectNote}
-          onDelete={removeNote}
+          onDelete={handleDeleteNote}
           onDeleteSelected={handleDeleteSelected}
+          onRestore={handleRestoreNote}
           searchQuery={searchQuery}
           sidebarFocused={sidebarFocused}
           onToggleSidebar={toggleSidebar}
           collapsed={sidebarCollapsed}
           style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
+          isTrash={isTrash}
+          currentFolderId={currentFolderId}
+          globalSearch={globalSearch}
+          folderNameMap={folderNameMap}
         />
 
         {/* Sidebar resize handle */}
@@ -325,35 +468,70 @@ export default function App() {
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
-            background: "#ffffff",
+            background: "var(--bg-primary)",
           }}
         >
-          {loading ? null : notes.length === 0 ? (
+          {loading ? null : searchResults !== null && searchResults.length === 0 ? (
             <div style={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: "16px",
+              gap: "0px",
               userSelect: "none",
               WebkitUserSelect: "none",
             }}>
-              {/* Placeholder for illustration — replace src with your chosen cartoon SVG */}
               <img
-                src="/Forest-bro.svg"
-                alt="No notes"
+                className="empty-state-img"
+                src="/pinguin4.png"
+                alt="No results"
                 style={{
-                  width: "min(400px, 50vh)",
-                  height: "min(400px, 50vh)",
-                  opacity: 0.35,
-                  filter: "grayscale(1)",
+                  maxWidth: "85%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  opacity: 0.4,
                   flexShrink: 1,
                 }}
               />
-              <span style={{ fontSize: "28px", fontWeight: 500, color: "#d8d8d8", marginTop: 24 }}>
-                0 notes
+              <span style={{ fontSize: "20px", fontWeight: 600, color: "var(--text-secondary)", marginTop: 8 }}>
+                No results
               </span>
+              <span style={{ fontSize: "13px", fontWeight: 450, color: "var(--text-tertiary)", marginTop: 6 }}>
+                Nothing found for &ldquo;{searchQuery}&rdquo;
+              </span>
+            </div>
+          ) : notes.length === 0 ? (
+            <div style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0px",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+            }}>
+              <img
+                className="empty-state-img"
+                src={isTrash ? "/pinguin3.png" : "/pinguin2.png"}
+                alt={isTrash ? "Empty trash" : "No notes"}
+                style={{
+                  maxWidth: "85%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  opacity: 0.45,
+                  flexShrink: 1,
+                }}
+              />
+              <span style={{ fontSize: "20px", fontWeight: 600, color: "var(--text-secondary)", marginTop: 8 }}>
+                {isTrash ? "Trash is empty" : "No notes yet"}
+              </span>
+              {!isTrash && (
+                <span style={{ fontSize: "13px", fontWeight: 450, color: "var(--text-tertiary)", marginTop: 6 }}>
+                  Press Ctrl+N to create one
+                </span>
+              )}
             </div>
           ) : (
             <Editor
@@ -366,13 +544,13 @@ export default function App() {
               onEditorReady={setEditorInstance}
               formatBarVisible={formatBarVisible}
               onToggleFormatBar={toggleFormatBar}
-              canGoBack={canGoBack}
-              canGoForward={canGoForward}
-              goBack={goBack}
-              goForward={goForward}
               onEditorFocus={handleEditorFocus}
+              onEditorTyping={handleEditorTyping}
               selectedNote={selectedNote}
               editorInstance={editorInstance}
+              readOnly={isTrash}
+              onDeleteNote={() => selectedId && handleDeleteNote(selectedId)}
+              onCopyMarkdown={handleCopyMarkdown}
             />
           )}
         </main>
@@ -395,17 +573,17 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(0, 0, 0, 0.3)",
+              color: "var(--text-muted)",
               transition: "background 0.1s, color 0.1s",
               zIndex: 10,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-              e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)";
+              e.currentTarget.style.background = "var(--bg-hover-strong)";
+              e.currentTarget.style.color = "var(--text-icon-hover)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)";
+              e.currentTarget.style.color = "var(--text-muted)";
             }}
           >
             <PanelLeftOpen size={16} strokeWidth={1.5} />

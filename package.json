@@ -31,11 +31,13 @@
     "@tiptap/pm": "^3.20.1",
     "@tiptap/react": "^3.20.1",
     "@tiptap/starter-kit": "^3.20.1",
+    "@types/turndown": "^5.0.6",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.577.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tauri-plugin-mcp": "^0.1.0"
+    "tauri-plugin-mcp": "^0.1.0",
+    "turndown": "^7.2.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
@@ -43,6 +45,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"

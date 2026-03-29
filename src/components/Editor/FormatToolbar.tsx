@@ -29,33 +29,11 @@ const BTN_BASE: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  color: "rgba(0,0,0,0.45)",
+  color: "var(--text-secondary)",
   transition: "background 0.1s, color 0.1s",
   flexShrink: 0,
   padding: 0,
 };
-
-const BTN_HOVER: React.CSSProperties = {
-  background: "rgba(0,0,0,0.06)",
-  color: "rgba(0,0,0,0.75)",
-};
-
-const BTN_ACTIVE: React.CSSProperties = {
-  background: "rgba(99,102,241,0.10)",
-  color: "#6366F1",
-};
-
-const DIVIDER = (
-  <div
-    style={{
-      width: 1,
-      height: 18,
-      background: "rgba(0,0,0,0.1)",
-      margin: "0 4px",
-      flexShrink: 0,
-    }}
-  />
-);
 
 function ToolButton({
   isActive,
@@ -74,8 +52,8 @@ function ToolButton({
 
   const computedStyle: React.CSSProperties = {
     ...BTN_BASE,
-    ...(hovered ? BTN_HOVER : {}),
-    ...(isActive ? BTN_ACTIVE : {}),
+    ...(hovered ? { background: "var(--bg-active)", color: "var(--text-icon-hover)" } : {}),
+    ...(isActive ? { background: "var(--accent-indigo-tint)", color: "var(--accent-indigo)" } : {}),
     ...style,
   };
 
@@ -99,10 +77,10 @@ const DROPDOWN_PANEL: React.CSSProperties = {
   position: "absolute",
   bottom: "calc(100% + 6px)",
   left: 0,
-  background: "#ffffff",
-  border: "1px solid rgba(0,0,0,0.1)",
+  background: "var(--bg-popover)",
+  border: "1px solid var(--border-input)",
   borderRadius: 8,
-  boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+  boxShadow: "var(--shadow-menu)",
   padding: 4,
   zIndex: 100,
   minWidth: 120,
@@ -134,13 +112,13 @@ function DropdownItem({
         borderRadius: 5,
         border: "none",
         background: isActive
-          ? "rgba(99,102,241,0.08)"
+          ? "var(--accent-indigo-tint)"
           : hovered
-          ? "rgba(0,0,0,0.05)"
+          ? "var(--bg-hover-strong)"
           : "transparent",
         cursor: "pointer",
         fontSize: 13,
-        color: isActive ? "#6366F1" : "#1c1c1e",
+        color: isActive ? "var(--accent-indigo)" : "var(--text-primary)",
         width: "100%",
         textAlign: "left",
         whiteSpace: "nowrap",
@@ -151,6 +129,18 @@ function DropdownItem({
   );
 }
 
+const DIVIDER = (
+  <div
+    style={{
+      width: 1,
+      height: 18,
+      background: "var(--border-primary)",
+      margin: "0 4px",
+      flexShrink: 0,
+    }}
+  />
+);
+
 export function FormatToolbar({ editor }: FormatToolbarProps) {
   const [openDropdown, setOpenDropdown] = useState<"heading" | "list" | null>(
     null
@@ -158,7 +148,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  // Only re-render when active states actually change (not on every keystroke)
   const state = useEditorState({
     editor,
     selector: (ctx) => ({
@@ -195,7 +184,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
       ref={toolbarRef}
       style={{
         height: 40,
-        background: "rgba(232, 232, 232, 0.92)",
+        background: "var(--bg-format-bar)",
         borderRadius: 10,
         display: "flex",
         alignItems: "center",
@@ -203,8 +192,8 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         gap: 2,
         userSelect: "none",
         backdropFilter: "blur(20px)",
-        border: "1px solid rgba(255, 255, 255, 0.45)",
-        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
+        border: "1px solid var(--bg-format-bar-border)",
+        boxShadow: "var(--shadow-format)",
       }}
     >
       {/* Heading dropdown */}
@@ -251,7 +240,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
                 >
                   H{level}
                 </span>
-                <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)" }}>
+                <span style={{ fontSize: 12, color: "var(--text-icon)" }}>
                   Heading {level}
                 </span>
               </DropdownItem>
@@ -262,7 +251,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {DIVIDER}
 
-      {/* Task list */}
       <ToolButton
         isActive={state.isTaskList}
         onClick={() => editor.chain().focus().toggleTaskList().run()}
@@ -271,7 +259,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         <SquareCheck size={15} />
       </ToolButton>
 
-      {/* List dropdown */}
       <div style={{ position: "relative" }}>
         <ToolButton
           isActive={isListActive}
@@ -313,7 +300,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {DIVIDER}
 
-      {/* Bold */}
       <ToolButton
         isActive={state.isBold}
         onClick={() => editor.chain().focus().toggleBold().run()}
@@ -322,7 +308,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         <Bold size={15} />
       </ToolButton>
 
-      {/* Italic */}
       <ToolButton
         isActive={state.isItalic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
@@ -333,7 +318,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {DIVIDER}
 
-      {/* Highlight */}
       <ToolButton
         isActive={state.isHighlight}
         onClick={() => editor.chain().focus().toggleHighlight().run()}
@@ -342,7 +326,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         <Highlighter size={15} />
       </ToolButton>
 
-      {/* Link */}
       <ToolButton
         onClick={() => {
           const prev = editor.getAttributes("link").href;
@@ -361,7 +344,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {DIVIDER}
 
-      {/* Table */}
       <ToolButton
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
         title="Insert table"
@@ -369,7 +351,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         <Table size={15} />
       </ToolButton>
 
-      {/* Image */}
       <ToolButton onClick={() => imageInputRef.current?.click()} title="Insert image">
         <Image size={15} />
       </ToolButton>
@@ -392,7 +373,6 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
 
       {DIVIDER}
 
-      {/* More */}
       <ToolButton onClick={() => {}} title="More options">
         <MoreHorizontal size={15} />
       </ToolButton>

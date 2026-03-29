@@ -15,10 +15,9 @@
 |---|---|
 | Desktop shell | Tauri v2 (Rust backend, WebView2 on Windows) |
 | UI | React + TypeScript + Tailwind CSS |
-| Components | shadcn/ui |
 | Editor | TipTap (ProseMirror-based) |
 | Database | SQLite via `tauri-plugin-sql` |
-| Search | SQLite FTS5 (built-in) |
+| Search | SQLite `LIKE` queries (no FTS5) |
 | Sync | None in v1 |
 
 ---
@@ -39,14 +38,15 @@
 - **Auto-save everything** — debounced 500ms, no save button ever.
 - **Memoize aggressively** — sidebar/note list must not re-render while typing.
 - **Design is first-class** — reference Bear and Typora constantly.
+- **No code signing** — not purchasing a cert for now.
+- **Auto-updater deferred** — planned for a later phase (tauri-plugin-updater).
 
 ---
 
 ## Windows Styling
 
-- `decorations: false` + `transparent: true` + `shadow: false` in tauri.conf.json
-- **Inter Variable** — app-wide font (bundled via `@fontsource-variable/inter`)
-- Frosted glass via CSS `backdrop-filter: blur(20px)` (not Mica)
+- `decorations: false` + `transparent: true` + `shadow: true` in tauri.conf.json
+- **Segoe UI Variable Display** — system font stack (no bundled font)
 - Lucide Icons (not Fluent)
 - Custom draggable titlebar via `data-tauri-drag-region`
 
@@ -55,7 +55,6 @@
 - **Document overflow / scrollbar**: With `transparent: true`, `html.scrollHeight` is ~16px larger than the viewport due to a WebView2 quirk. Fix: use `position: fixed; inset: 0` on the root app div instead of `height: 100vh`.
 - **Native scrollbar blocking resize**: Do NOT use `scrollBarStyle: "fluentOverlay"` — it renders a native scrollbar over resize handles. The `::-webkit-scrollbar` CSS approach is sufficient.
 - **Resize permission**: `startResizeDragging` requires `core:window:allow-start-resize-dragging` in `capabilities/default.json`.
-- **`backdrop-filter` creates fixed positioning context**: Children with `position: fixed` are positioned relative to the element with `backdrop-filter`, not the viewport.
 
 ---
 
@@ -63,10 +62,25 @@
 
 1. Create and edit notes — TipTap rich text editor
 2. Note list — sidebar, sorted by last modified
-3. Fast full-text search — SQLite FTS5
-4. Auto-save — debounced, no save button
-5. Fast launch — under 500ms
-6. Beautiful Windows-native UI
+3. Folders + drag-to-folder
+4. Trash (soft delete + restore)
+5. Search — LIKE-based, per-folder or global
+6. Auto-save — debounced 500ms, flushed on window close
+7. Dark/light theme
+8. Copy as Markdown
+9. Beautiful Windows-native UI
+
+---
+
+## Production Hardening (implemented)
+
+- **Error Boundary** — `src/components/ErrorBoundary.tsx` wraps the app, catches React crashes
+- **Error toasts** — `src/lib/toast.ts` + `src/components/Toast.tsx`, error-only (no success toasts)
+- **DB error handling** — all operations in `useNotes`, `useAutoSave`, and `App.tsx` are wrapped in try/catch with user-visible error toasts
+- **SQLite backup** — Rust `backup_database` command copies `notes.db` → `notes.db.backup` on every launch (before DB connection opens)
+- **Close handler** — `onCloseRequested` flushes any pending auto-save before the window closes
+- **CSP** — real Content Security Policy set in `tauri.conf.json` (was `null` before)
+- **CI/CD** — `.github/workflows/release.yml` builds Windows/macOS/Linux on tag push, creates draft GitHub Release
 
 ---
 
@@ -75,21 +89,32 @@
 ```
 src/
   components/
-    Editor/       # TipTap wrapper + extensions
-    NoteList/     # Sidebar note list
-    TitleBar/     # Custom draggable titlebar
+    Editor/           # TipTap wrapper, toolbar, format bar, table context menu
+    NoteList/         # Sidebar note list
+    TitleBar/         # Custom draggable titlebar + folder switcher
+    ErrorBoundary.tsx # React error boundary
+    Toast.tsx         # Error toast notifications
   hooks/
-    useNotes.ts
-    useSearch.ts
-    useAutoSave.ts
+    useNotes.ts       # Notes CRUD + state
+    useSearch.ts      # Debounced search
+    useAutoSave.ts    # Debounced save + flushPendingSave() for close handler
+    useNoteHistory.ts # Back/forward navigation
   lib/
-    db.ts         # SQLite queries
+    db.ts             # SQLite queries + backup on init
+    toast.ts          # Error pub/sub (no React dependency)
+    theme.ts          # Dark/light theme persistence
+    markdown.ts       # HTML → Markdown conversion
+    extractTitle.ts   # Title extraction from content
+    timeAgo.ts        # Relative time formatting
+    folderIcons.tsx   # Folder icon components
   App.tsx
-  main.tsx        # setupPluginListeners() called here (dev only)
+  main.tsx            # Entry point — ErrorBoundary + ToastContainer + dev-only MCP
 src-tauri/
-  src/lib.rs      # tauri-plugin-mcp registered here (debug only, TCP port 4000)
+  src/lib.rs          # Rust: backup_database command + tauri-plugin-mcp (debug only)
   tauri.conf.json
   capabilities/default.json
+.github/
+  workflows/release.yml  # CI/CD: build + draft release on tag push
 ```
 
 ---
@@ -97,18 +122,26 @@ src-tauri/
 ## SQLite Schema
 
 ```sql
-CREATE TABLE notes (
+CREATE TABLE folders (
   id         TEXT PRIMARY KEY,
-  title      TEXT NOT NULL DEFAULT 'Untitled',
-  content    TEXT NOT NULL DEFAULT '{}',  -- TipTap JSON
+  name       TEXT NOT NULL,
+  icon       TEXT NOT NULL DEFAULT 'folder',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
-CREATE VIRTUAL TABLE notes_fts USING fts5(
-  title, content, content=notes, content_rowid=rowid
+CREATE TABLE notes (
+  id             TEXT PRIMARY KEY,
+  title          TEXT NOT NULL DEFAULT 'Untitled',
+  content        TEXT NOT NULL DEFAULT '',
+  folder_id      TEXT NOT NULL DEFAULT 'notes',
+  prev_folder_id TEXT DEFAULT NULL,   -- for trash restore
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
 );
 ```
+
+Default folders seeded on init: `notes` (Notes), `todo` (Todo). Trash uses special folder ID `__trash__`.
 
 ---
 
@@ -136,7 +169,6 @@ Use `mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_contex
 | Tauri v2 | `/websites/v2_tauri_app` | Config, window, webview API questions |
 | Tauri v2 Rust API | `/websites/rs_tauri` | Rust-side plugin/command questions |
 | TipTap | resolve via name `tiptap` | Editor extensions, ProseMirror |
-| shadcn/ui | resolve via name `shadcn` | Component usage |
 
 ---
 
@@ -146,4 +178,3 @@ Use `mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_contex
 - TipTap docs: https://tiptap.dev
 - tauri-plugin-mcp (Rust): https://github.com/P3GLEG/tauri-plugin-mcp
 - tauri-plugin-sql: https://github.com/tauri-apps/tauri-plugin-sql
-- SQLite FTS5: https://www.sqlite.org/fts5.html

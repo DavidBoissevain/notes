@@ -42,7 +42,6 @@ export const FONT_SIZE_DEFAULT = 18.6;
 const lowlight = createLowlight(all);
 
 // ---------- Heading indicator (Bear-style) ----------
-// Shows "H1" / "H2" / "H3" in the left gutter only for the heading the cursor is in.
 const headingIndicatorKey = new PluginKey("headingIndicator");
 
 const HeadingIndicatorExtension = Extension.create({
@@ -77,7 +76,6 @@ function buildDecorations(state: any): DecorationSet {
   if (!selection.empty) return DecorationSet.empty;
 
   const $pos = selection.$head;
-  // Walk up to find a heading node
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
     if (node.type.name === "heading") {
@@ -94,8 +92,6 @@ function buildDecorations(state: any): DecorationSet {
 }
 
 // ---------- Drag-and-drop text extension ----------
-// Implements text-selection drag-and-drop via a ProseMirror Plugin,
-// which guarantees the handlers are properly registered in PM's event chain.
 const DragTextExtension = Extension.create({
   name: "dragText",
   addProseMirrorPlugins() {
@@ -124,10 +120,9 @@ const DragTextExtension = Extension.create({
               if (!pos) return false;
               const { from, to } = selection;
               if (pos.pos < from || pos.pos > to) return false;
-              // Click is inside selection — prepare for drag
               dragState = { from, to, slice: selection.content() };
               view.dom.draggable = true;
-              return true; // prevent ProseMirror from collapsing the selection
+              return true;
             },
             dragstart(view, event) {
               if (!dragState || !event.dataTransfer) return false;
@@ -182,7 +177,6 @@ const DragTextExtension = Extension.create({
             },
             mouseup(view, event) {
               if (!dragState) return false;
-              // No drag happened — collapse selection at click position
               const pos = view.posAtCoords({
                 left: event.clientX,
                 top: event.clientY,
@@ -253,11 +247,10 @@ const IndentExtension = Extension.create({
         if (!match) return false;
         return this.editor.chain().splitBlock().insertContent(match[1]).run();
       },
-      // Alt+1/2/3 — toggle headings, Alt+0 — paragraph
-      "Alt-1": () => this.editor.commands.toggleHeading({ level: 1 }),
-      "Alt-2": () => this.editor.commands.toggleHeading({ level: 2 }),
-      "Alt-3": () => this.editor.commands.toggleHeading({ level: 3 }),
-      "Alt-0": () => this.editor.commands.setParagraph(),
+      "Mod-1": () => this.editor.commands.toggleHeading({ level: 1 }),
+      "Mod-2": () => this.editor.commands.toggleHeading({ level: 2 }),
+      "Mod-3": () => this.editor.commands.toggleHeading({ level: 3 }),
+      "Mod-0": () => this.editor.commands.setParagraph(),
     };
   },
 });
@@ -272,17 +265,16 @@ interface EditorProps {
   onEditorReady?: (editor: ReturnType<typeof useEditor> | null) => void;
   formatBarVisible: boolean;
   onToggleFormatBar: () => void;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  goBack: () => void;
-  goForward: () => void;
   onEditorFocus?: () => void;
+  onEditorTyping?: () => void;
   selectedNote?: { created_at: number; updated_at: number } | null;
   editorInstance?: ReturnType<typeof useEditor> | null;
+  readOnly?: boolean;
+  onDeleteNote?: () => void;
+  onCopyMarkdown?: () => void;
 }
 
 
-// Editor owns all local state so typing never re-renders App or NoteList.
 export function Editor({
   noteId,
   content,
@@ -293,13 +285,13 @@ export function Editor({
   onEditorReady,
   formatBarVisible,
   onToggleFormatBar,
-  canGoBack,
-  canGoForward,
-  goBack,
-  goForward,
   onEditorFocus,
+  onEditorTyping,
   selectedNote,
   editorInstance,
+  readOnly,
+  onDeleteNote,
+  onCopyMarkdown,
 }: EditorProps) {
   const lastNoteId = useRef<string | null>(null);
   const [bodyContent, setBodyContent] = useState(content);
@@ -307,7 +299,7 @@ export function Editor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Slow down drag-selection: only let ProseMirror see mousemove every MIN_DIST pixels
+  // Slow down drag-selection
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -317,10 +309,6 @@ export function Editor({
     const MIN_DIST = 6;
 
     const onDown = (e: MouseEvent) => {
-      // If the ProseMirror element is draggable, our DragTextExtension has
-      // claimed this mousedown for a text-drag. Don't throttle mousemove
-      // or stopPropagation will swallow the events the browser needs to
-      // detect the HTML5 drag gesture.
       const pm = el.querySelector(".ProseMirror") as HTMLElement | null;
       if (pm?.draggable) return;
       dragging = true;
@@ -396,8 +384,8 @@ export function Editor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        dropcursor: { color: "#1c1c1e", width: 2, class: "drop-cursor" },
-        codeBlock: false, // replaced by CodeBlockLowlight
+        dropcursor: { color: "var(--drag-cursor-color)", width: 2, class: "drop-cursor" },
+        codeBlock: false,
       }),
       CodeBlockLowlight.configure({ lowlight }),
       Link.configure({
@@ -421,15 +409,21 @@ export function Editor({
     ],
     content: content || "<p></p>",
     autofocus: false,
+    editable: !readOnly,
     editorProps: { attributes: { spellcheck: "false" } },
     onUpdate({ editor }) {
       const html = editor.getHTML();
       isDirty.current = true;
       setBodyContent(html);
+      onEditorTyping?.();
     },
   });
 
-  // Expose editor instance to parent for bottom bar
+  // Update editable when readOnly changes
+  useEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
   useEffect(() => {
     onEditorReady?.(editor);
     return () => onEditorReady?.(null);
@@ -440,19 +434,17 @@ export function Editor({
     lastNoteId.current = noteId;
     isDirty.current = false;
     setBodyContent(content);
-    if (autoFocus && !content) {
-      // New note: start with H1 formatting (Bear-style), cursor inside the H1
+    if (autoFocus && !content && !readOnly) {
       editor?.commands.setContent("<h1></h1>", { emitUpdate: false });
       editor?.commands.focus("start");
     } else {
       editor?.commands.setContent(content || "<p></p>", { emitUpdate: false });
-      if (autoFocus) editor?.commands.focus("end");
+      if (autoFocus && !readOnly) editor?.commands.focus("end");
     }
   }, [noteId]);
 
   useAutoSave(noteId, bodyContent, onSaved, isDirty);
 
-  // Character / word count (only re-renders when counts change)
   const counts = useEditorState({
     editor,
     selector: (ctx) => ({
@@ -498,21 +490,20 @@ export function Editor({
       }}
       onMouseDown={onEditorFocus}
     >
-      {/* Body */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div
           ref={scrollRef}
           className="editor-scroll"
           style={{
             height: "100%",
-            cursor: "text",
+            cursor: readOnly ? "default" : "text",
             overflowY: "auto",
             overflowX: "hidden",
             fontSize: `${fontSize}px`,
             lineHeight: `${Math.round(fontSize * 1.5)}px`,
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) editor?.commands.focus("end");
+            if (e.target === e.currentTarget && !readOnly) editor?.commands.focus("end");
           }}
           onContextMenu={(e) => {
             const target = e.target as HTMLElement;
@@ -522,8 +513,7 @@ export function Editor({
             }
           }}
         >
-          {/* Bubble menu (portaled, position doesn't matter) */}
-          {editor && (
+          {editor && !readOnly && (
             <BubbleMenu className="bubble-menu" editor={editor}>
               <button
                 onMouseDown={(e) => {
@@ -593,7 +583,7 @@ export function Editor({
             <div
               style={{ flex: 1, minWidth: 0 }}
               onClick={(e) => {
-                if (e.target === e.currentTarget)
+                if (e.target === e.currentTarget && !readOnly)
                   editor?.commands.focus("end");
               }}
             >
@@ -602,24 +592,21 @@ export function Editor({
           </div>
         </div>
 
-        {/* Editor toolbar (top-right, auto-hide on typing) */}
         {editor && (
           <EditorToolbar
             editor={editor}
             formatBarVisible={formatBarVisible}
             onToggleFormatBar={onToggleFormatBar}
-            canGoBack={canGoBack}
-            canGoForward={canGoForward}
-            onGoBack={goBack}
-            onGoForward={goForward}
             scrollRef={scrollRef}
             counts={counts}
             selectedNote={selectedNote}
+            onDeleteNote={onDeleteNote}
+            onCopyMarkdown={onCopyMarkdown}
+            readOnly={readOnly}
           />
         )}
 
-        {/* Floating format toolbar (Bear-style pill) — slides in/out */}
-        {editorInstance && (
+        {editorInstance && !readOnly && (
           <div
             style={{
               position: "absolute",
@@ -638,7 +625,7 @@ export function Editor({
           </div>
         )}
 
-        {/* Zoom pill — fades in/out */}
+        {/* Zoom pill */}
         <div
           style={{
             position: "absolute",
@@ -653,11 +640,11 @@ export function Editor({
             style={{
               padding: "3px 10px",
               borderRadius: "999px",
-              background: "rgba(0, 0, 0, 0.055)",
-              border: "1px solid rgba(0, 0, 0, 0.07)",
+              background: "var(--bg-active)",
+              border: "1px solid var(--border-light)",
               fontSize: "11.5px",
               fontWeight: 500,
-              color: "rgba(0, 0, 0, 0.38)",
+              color: "var(--text-secondary)",
               letterSpacing: "0.01em",
               opacity: zoomVisible ? 1 : 0,
               transition: "opacity 0.4s ease",
@@ -668,8 +655,7 @@ export function Editor({
         </div>
       </div>
 
-      {/* Table context menu */}
-      {tableMenu && editor && (
+      {tableMenu && editor && !readOnly && (
         <TableContextMenu
           editor={editor}
           x={tableMenu.x}

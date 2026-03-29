@@ -8,12 +8,18 @@ import Link from "@tiptap/extension-link";
 import { Typography } from "@tiptap/extension-typography";
 import { CharacterCount } from "@tiptap/extension-character-count";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { Image as TiptapImage } from "@tiptap/extension-image";
 import { all, createLowlight } from "lowlight";
 import { Extension } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { dropPoint } from "@tiptap/pm/transform";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bold,
   Italic,
@@ -24,55 +30,68 @@ import {
 } from "lucide-react";
 
 import { useAutoSave } from "../../hooks/useAutoSave";
+import { EditorToolbar } from "./EditorToolbar";
+import { FormatToolbar } from "./FormatToolbar";
+import { TableContextMenu } from "./TableContextMenu";
 
 export const FONT_SIZE_STEP = 1;
 export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 120;
-export const FONT_SIZE_DEFAULT = 15.5;
+export const FONT_SIZE_DEFAULT = 18.6;
 
 const lowlight = createLowlight(all);
 
-// ---------- Current-line highlight (visual-line aware) ----------
-// Uses a ProseMirror plugin view() so it fires on every state change.
-// Finds the ".current-line-overlay" div in the DOM and positions it.
-const CurrentLineExtension = Extension.create({
-  name: "currentLine",
+// ---------- Heading indicator (Bear-style) ----------
+// Shows "H1" / "H2" / "H3" in the left gutter only for the heading the cursor is in.
+const headingIndicatorKey = new PluginKey("headingIndicator");
+
+const HeadingIndicatorExtension = Extension.create({
+  name: "headingIndicator",
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        view() {
-          return {
-            update(view) {
-              const { selection } = view.state;
-              // Walk up to the flex wrapper that contains the overlay
-              const overlay = view.dom
-                .closest(".editor-scroll")
-                ?.querySelector(
-                  ".current-line-overlay",
-                ) as HTMLElement | null;
-              const flex = overlay?.parentElement;
-              if (!overlay) return;
-
-              if (!selection.empty) {
-                overlay.style.display = "none";
-                return;
-              }
-
-              const coords = view.coordsAtPos(selection.head);
-              const flexRect = flex!.getBoundingClientRect();
-              const lh =
-                parseFloat(getComputedStyle(view.dom).lineHeight) || 20;
-
-              overlay.style.display = "block";
-              overlay.style.top = `${coords.top - flexRect.top}px`;
-              overlay.style.height = `${lh}px`;
-            },
-          };
+        key: headingIndicatorKey,
+        state: {
+          init(_, state) {
+            return buildDecorations(state);
+          },
+          apply(tr, old, _oldState, newState) {
+            if (tr.docChanged || tr.selectionSet) {
+              return buildDecorations(newState);
+            }
+            return old;
+          },
+        },
+        props: {
+          decorations(state) {
+            return this.getState(state);
+          },
         },
       }),
     ];
   },
 });
+
+function buildDecorations(state: any): DecorationSet {
+  const { selection, doc } = state;
+  if (!selection.empty) return DecorationSet.empty;
+
+  const $pos = selection.$head;
+  // Walk up to find a heading node
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type.name === "heading") {
+      const pos = $pos.before(depth);
+      const level = node.attrs.level;
+      return DecorationSet.create(doc, [
+        Decoration.node(pos, pos + node.nodeSize, {
+          class: `heading-active heading-active-${level}`,
+        }),
+      ]);
+    }
+  }
+  return DecorationSet.empty;
+}
 
 // ---------- Drag-and-drop text extension ----------
 // Implements text-selection drag-and-drop via a ProseMirror Plugin,
@@ -234,6 +253,11 @@ const IndentExtension = Extension.create({
         if (!match) return false;
         return this.editor.chain().splitBlock().insertContent(match[1]).run();
       },
+      // Alt+1/2/3 — toggle headings, Alt+0 — paragraph
+      "Alt-1": () => this.editor.commands.toggleHeading({ level: 1 }),
+      "Alt-2": () => this.editor.commands.toggleHeading({ level: 2 }),
+      "Alt-3": () => this.editor.commands.toggleHeading({ level: 3 }),
+      "Alt-0": () => this.editor.commands.setParagraph(),
     };
   },
 });
@@ -246,106 +270,17 @@ interface EditorProps {
   onFontSizeChange: (size: number) => void;
   autoFocus?: boolean;
   onEditorReady?: (editor: ReturnType<typeof useEditor> | null) => void;
+  formatBarVisible: boolean;
+  onToggleFormatBar: () => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  goBack: () => void;
+  goForward: () => void;
+  onEditorFocus?: () => void;
+  selectedNote?: { created_at: number; updated_at: number } | null;
+  editorInstance?: ReturnType<typeof useEditor> | null;
 }
 
-// ---------- Line numbers (visual-line aware) ----------
-function LineNumbers({
-  editor,
-  lineHeight,
-}: {
-  editor: ReturnType<typeof useEditor>;
-  lineHeight: number;
-}) {
-  const [entries, setEntries] = useState<{ height: number }[]>([]);
-
-  const recalc = useCallback(() => {
-    if (!editor?.view) return;
-    const pmEl = editor.view.dom as HTMLElement;
-    const children = Array.from(pmEl.children) as HTMLElement[];
-    if (children.length === 0) {
-      setEntries([]);
-      return;
-    }
-
-    const next: { height: number }[] = [];
-
-    // Measure one block element and push visual-line entries
-    const measureBlock = (el: HTMLElement, bottomBound: number) => {
-      const blockHeight = bottomBound - el.offsetTop;
-      const visualLines = Math.max(1, Math.round(blockHeight / lineHeight));
-      const perLine = blockHeight / visualLines;
-      for (let j = 0; j < visualLines; j++) {
-        next.push({ height: perLine });
-      }
-    };
-
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      const nextTop =
-        i < children.length - 1
-          ? children[i + 1].offsetTop
-          : child.offsetTop + child.offsetHeight;
-      const tag = child.tagName;
-
-      // For lists, iterate <li> children so each item gets its own line number
-      if (tag === "UL" || tag === "OL") {
-        const items = Array.from(child.children).filter(
-          (c) => c.tagName === "LI",
-        ) as HTMLElement[];
-        // Bottom of the list element itself (excludes margin)
-        const listBottom = child.offsetTop + child.offsetHeight;
-        for (let k = 0; k < items.length; k++) {
-          const itemBottom =
-            k < items.length - 1
-              ? items[k + 1].offsetTop
-              : listBottom;
-          measureBlock(items[k], itemBottom);
-        }
-        // Silently absorb the list's margin-bottom gap into the last entry
-        // so the next element's line number starts at the right position
-        const marginGap = nextTop - listBottom;
-        if (marginGap > 0 && next.length > 0) {
-          next[next.length - 1].height += marginGap;
-        }
-      } else {
-        measureBlock(child, nextTop);
-      }
-    }
-    setEntries(next);
-  }, [editor, lineHeight]);
-
-  useEffect(() => {
-    if (!editor?.view) return;
-    const pmEl = editor.view.dom as HTMLElement;
-
-    // Initial + debounced recalc
-    const raf = () => requestAnimationFrame(recalc);
-    raf();
-
-    editor.on("update", raf);
-    const ro = new ResizeObserver(raf);
-    ro.observe(pmEl);
-
-    return () => {
-      editor.off("update", raf);
-      ro.disconnect();
-    };
-  }, [editor, lineHeight, recalc]);
-
-  if (!entries.length) return null;
-
-  return (
-    <div className="line-gutter">
-      <div style={{ paddingTop: 24 }}>
-        {entries.map((e, i) => (
-          <div key={i} className="line-num" style={{ height: e.height }}>
-            {i + 1}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Editor owns all local state so typing never re-renders App or NoteList.
 export function Editor({
@@ -356,11 +291,21 @@ export function Editor({
   onFontSizeChange,
   autoFocus,
   onEditorReady,
+  formatBarVisible,
+  onToggleFormatBar,
+  canGoBack,
+  canGoForward,
+  goBack,
+  goForward,
+  onEditorFocus,
+  selectedNote,
+  editorInstance,
 }: EditorProps) {
   const lastNoteId = useRef<string | null>(null);
   const [bodyContent, setBodyContent] = useState(content);
   const isDirty = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Slow down drag-selection: only let ProseMirror see mousemove every MIN_DIST pixels
   useEffect(() => {
@@ -463,11 +408,16 @@ export function Editor({
       Typography,
       CharacterCount,
       DragTextExtension,
-      CurrentLineExtension,
       IndentExtension,
+      HeadingIndicatorExtension,
       Highlight,
       TaskList,
       TaskItem.configure({ nested: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TiptapImage.configure({ inline: false, allowBase64: true }),
     ],
     content: content || "<p></p>",
     autofocus: false,
@@ -490,8 +440,14 @@ export function Editor({
     lastNoteId.current = noteId;
     isDirty.current = false;
     setBodyContent(content);
-    editor?.commands.setContent(content || "<p></p>", { emitUpdate: false });
-    if (autoFocus) editor?.commands.focus("end");
+    if (autoFocus && !content) {
+      // New note: start with H1 formatting (Bear-style), cursor inside the H1
+      editor?.commands.setContent("<h1></h1>", { emitUpdate: false });
+      editor?.commands.focus("start");
+    } else {
+      editor?.commands.setContent(content || "<p></p>", { emitUpdate: false });
+      if (autoFocus) editor?.commands.focus("end");
+    }
   }, [noteId]);
 
   useAutoSave(noteId, bodyContent, onSaved, isDirty);
@@ -540,6 +496,7 @@ export function Editor({
         display: "flex",
         flexDirection: "column",
       }}
+      onMouseDown={onEditorFocus}
     >
       {/* Body */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
@@ -552,10 +509,17 @@ export function Editor({
             overflowY: "auto",
             overflowX: "hidden",
             fontSize: `${fontSize}px`,
-            lineHeight: `${Math.round(fontSize * 1.35)}px`,
+            lineHeight: `${Math.round(fontSize * 1.5)}px`,
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) editor?.commands.focus("end");
+          }}
+          onContextMenu={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("td, th")) {
+              e.preventDefault();
+              setTableMenu({ x: e.clientX, y: e.clientY });
+            }
           }}
         >
           {/* Bubble menu (portaled, position doesn't matter) */}
@@ -626,23 +590,6 @@ export function Editor({
               isolation: "isolate",
             }}
           >
-            {/* Current-line highlight overlay (z-index -1 = behind content) */}
-            <div
-              className="current-line-overlay"
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                background: "rgba(0, 0, 0, 0.07)",
-                pointerEvents: "none",
-                display: "none",
-                zIndex: -1,
-              }}
-            />
-            <LineNumbers
-              editor={editor}
-              lineHeight={Math.round(fontSize * 1.35)}
-            />
             <div
               style={{ flex: 1, minWidth: 0 }}
               onClick={(e) => {
@@ -655,34 +602,53 @@ export function Editor({
           </div>
         </div>
 
-        {/* Status bar: word count + zoom */}
+        {/* Editor toolbar (top-right, auto-hide on typing) */}
+        {editor && (
+          <EditorToolbar
+            editor={editor}
+            formatBarVisible={formatBarVisible}
+            onToggleFormatBar={onToggleFormatBar}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onGoBack={goBack}
+            onGoForward={goForward}
+            scrollRef={scrollRef}
+            counts={counts}
+            selectedNote={selectedNote}
+          />
+        )}
+
+        {/* Floating format toolbar (Bear-style pill) — slides in/out */}
+        {editorInstance && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 16,
+              left: "50%",
+              transform: formatBarVisible
+                ? "translateX(-50%) translateY(0)"
+                : "translateX(-50%) translateY(calc(100% + 32px))",
+              opacity: formatBarVisible ? 1 : 0,
+              transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              zIndex: 10,
+              pointerEvents: formatBarVisible ? "auto" : "none",
+            }}
+          >
+            <FormatToolbar editor={editorInstance} />
+          </div>
+        )}
+
+        {/* Zoom pill — fades in/out */}
         <div
           style={{
             position: "absolute",
             bottom: "16px",
             right: "16px",
-            display: "flex",
-            gap: "12px",
-            alignItems: "center",
             userSelect: "none",
             WebkitUserSelect: "none",
             pointerEvents: "none",
           }}
         >
-          {/* Word count — always visible */}
-          {counts && (
-            <span
-              style={{
-                fontSize: "11px",
-                color: "rgba(0, 0, 0, 0.3)",
-                fontWeight: 400,
-                letterSpacing: "0.01em",
-              }}
-            >
-              {counts.words} {counts.words === 1 ? "word" : "words"}
-            </span>
-          )}
-          {/* Zoom pill — fades in/out */}
           <span
             style={{
               padding: "3px 10px",
@@ -702,6 +668,15 @@ export function Editor({
         </div>
       </div>
 
+      {/* Table context menu */}
+      {tableMenu && editor && (
+        <TableContextMenu
+          editor={editor}
+          x={tableMenu.x}
+          y={tableMenu.y}
+          onClose={() => setTableMenu(null)}
+        />
+      )}
     </div>
   );
 }

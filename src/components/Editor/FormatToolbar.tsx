@@ -9,6 +9,10 @@ import {
   Bold,
   Italic,
   Highlighter,
+  Link as LinkIcon,
+  Table,
+  Image,
+  MoreHorizontal,
 } from "lucide-react";
 
 interface FormatToolbarProps {
@@ -152,6 +156,7 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
     null
   );
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Only re-render when active states actually change (not on every keystroke)
   const state = useEditorState({
@@ -189,16 +194,17 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
     <div
       ref={toolbarRef}
       style={{
-        flex: 1,
-        height: 44,
-        background: "#ffffff",
-        borderTop: "1px solid #e8e8e8",
+        height: 40,
+        background: "rgba(232, 232, 232, 0.92)",
+        borderRadius: 10,
         display: "flex",
         alignItems: "center",
-        padding: "0 16px",
+        padding: "0 8px",
         gap: 2,
-        flexShrink: 0,
         userSelect: "none",
+        backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255, 255, 255, 0.45)",
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
       }}
     >
       {/* Heading dropdown */}
@@ -334,6 +340,61 @@ export function FormatToolbar({ editor }: FormatToolbarProps) {
         title="Highlight"
       >
         <Highlighter size={15} />
+      </ToolButton>
+
+      {/* Link */}
+      <ToolButton
+        onClick={() => {
+          const prev = editor.getAttributes("link").href;
+          const url = window.prompt("URL", prev);
+          if (url === null) return;
+          if (url === "") {
+            editor.chain().focus().extendMarkRange("link").unsetLink().run();
+          } else {
+            editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+          }
+        }}
+        title="Link"
+      >
+        <LinkIcon size={15} />
+      </ToolButton>
+
+      {DIVIDER}
+
+      {/* Table */}
+      <ToolButton
+        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+        title="Insert table"
+      >
+        <Table size={15} />
+      </ToolButton>
+
+      {/* Image */}
+      <ToolButton onClick={() => imageInputRef.current?.click()} title="Insert image">
+        <Image size={15} />
+      </ToolButton>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            editor.chain().focus().setImage({ src: reader.result as string }).run();
+          };
+          reader.readAsDataURL(file);
+          e.target.value = "";
+        }}
+      />
+
+      {DIVIDER}
+
+      {/* More */}
+      <ToolButton onClick={() => {}} title="More options">
+        <MoreHorizontal size={15} />
       </ToolButton>
     </div>
   );

@@ -1,28 +1,39 @@
 // Central notes state: loads from SQLite on mount, exposes CRUD + refreshNote for sidebar updates.
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { getAllNotes, createNote, deleteNote, type Note } from "../lib/db";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { getNotesByFolder, createNote, deleteNote, type Note } from "../lib/db";
+import { extractTitle } from "../lib/extractTitle";
 
-export function useNotes() {
+export function useNotes(folderId: string) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const noteCountRef = useRef(0); // stable counter for new note names — avoids notes.length in useCallback dep array
+  const [newNoteId, setNewNoteId] = useState<string | null>(null);
 
+  // Reload notes when folder changes
   useEffect(() => {
-    getAllNotes().then((loaded) => {
+    setLoading(true);
+    getNotesByFolder(folderId).then((loaded) => {
       setNotes(loaded);
-      noteCountRef.current = loaded.length;
-      if (loaded.length > 0) setSelectedId(loaded[0].id);
+      setSelectedId(loaded[0]?.id ?? null);
       setLoading(false);
     });
-  }, []);
+  }, [folderId]);
 
   const newNote = useCallback(async () => {
-    noteCountRef.current += 1;
-    const note = await createNote(`New ${noteCountRef.current}`);
+    const note = await createNote("", folderId);
     setNotes((prev) => [note, ...prev]);
     setSelectedId(note.id);
-  }, []);
+    setNewNoteId(note.id);
+    return note.id;
+  }, [folderId]);
+
+  // Clear newNoteId after animation completes
+  useEffect(() => {
+    if (newNoteId) {
+      const timer = setTimeout(() => setNewNoteId(null), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [newNoteId]);
 
   const removeNote = useCallback(async (id: string) => {
     await deleteNote(id);
@@ -33,11 +44,17 @@ export function useNotes() {
     });
   }, [selectedId]);
 
-  // Called by Editor after auto-save; updates the sidebar title and updated_at without a DB round-trip.
+  // Called by Editor after auto-save; derives title from content, updates sidebar, re-sorts by updated_at.
   const refreshNote = useCallback((id: string, content: string) => {
-    setNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, content, updated_at: Date.now() } : n))
-    );
+    const { title } = extractTitle(content);
+    const now = Date.now();
+    setNotes((prev) => {
+      const updated = prev.map((n) =>
+        n.id === id ? { ...n, title: title || "Untitled", content, updated_at: now } : n
+      );
+      updated.sort((a, b) => b.updated_at - a.updated_at);
+      return updated;
+    });
   }, []);
 
   const selectedNote = useMemo(
@@ -45,5 +62,5 @@ export function useNotes() {
     [notes, selectedId]
   );
 
-  return { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading };
+  return { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading, newNoteId };
 }

@@ -33,6 +33,13 @@ Building for Windows only in v1. Mac users already have Bear. This gap is on Win
 
 ---
 
+## House Style Color
+
+- **Primary Blue: `#4A6FA5`** (steel blue) — used for the editor caret, sidebar selected-note accent bar, and any primary interactive accents. A calm, professional blue that avoids feeling too electric.
+- **Selected tint: `rgba(74, 111, 165, 0.08)`** — subdued blue backdrop for selected items (mirrors how Bear uses a faint red tint behind selected notes).
+
+---
+
 ## What Makes This Different
 
 No note app currently combines all of these on Windows:

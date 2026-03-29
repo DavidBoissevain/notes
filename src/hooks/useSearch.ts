@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { searchNotes, type Note } from "../lib/db";
 
-export function useSearch(query: string) {
+export function useSearch(query: string, folderId?: string) {
   const [results, setResults] = useState<Note[] | null>(null);
 
   useEffect(() => {
@@ -11,14 +11,14 @@ export function useSearch(query: string) {
     }
     const timer = setTimeout(async () => {
       try {
-        const found = await searchNotes(query.trim());
+        const found = await searchNotes(query.trim(), folderId);
         setResults(found);
       } catch {
         setResults([]);
       }
     }, 150);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, folderId]);
 
   return { results };
 }

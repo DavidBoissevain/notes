@@ -4,15 +4,16 @@ import type { Editor as TiptapEditor } from "@tiptap/react";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
 import { Editor, FONT_SIZE_DEFAULT } from "./components/Editor/Editor";
-import { FormatToolbar } from "./components/Editor/FormatToolbar";
 import { useNotes } from "./hooks/useNotes";
 import { useSearch } from "./hooks/useSearch";
-import { FileText, PanelLeft, PanelLeftClose } from "lucide-react";
+import { useNoteHistory } from "./hooks/useNoteHistory";
+import { getAllFolders, createFolder, deleteFolder, updateFolderIcon, DEFAULT_FOLDER_ID, type Folder } from "./lib/db";
+import { FileText, PanelLeftOpen } from "lucide-react";
 
 const RESIZE_SIZE = 12;
-const SIDEBAR_MIN = 100;
+const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 400;
-const SIDEBAR_DEFAULT = 220;
+const SIDEBAR_DEFAULT = 280;
 
 type ResizeDirection = "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest";
 
@@ -43,10 +44,62 @@ function ResizeHandles({ maximized }: { maximized: boolean }) {
 }
 
 export default function App() {
-  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading } = useNotes();
+  // --- Folder state ---
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState(() => {
+    return localStorage.getItem("current-folder") || DEFAULT_FOLDER_ID;
+  });
+
+  useEffect(() => {
+    getAllFolders().then(setFolders);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("current-folder", currentFolderId);
+  }, [currentFolderId]);
+
+  const handleCreateFolder = useCallback(async (name: string, icon: string) => {
+    const folder = await createFolder(name, icon);
+    setFolders((prev) => [...prev, folder]);
+    setCurrentFolderId(folder.id);
+  }, []);
+
+  const handleDeleteFolder = useCallback(async (id: string) => {
+    await deleteFolder(id);
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    if (currentFolderId === id) setCurrentFolderId(DEFAULT_FOLDER_ID);
+  }, [currentFolderId]);
+
+  const handleUpdateFolderIcon = useCallback(async (id: string, icon: string) => {
+    await updateFolderIcon(id, icon);
+    setFolders((prev) => prev.map((f) => f.id === id ? { ...f, icon } : f));
+  }, []);
+
+  const { notes, selectedNote, selectedId, setSelectedId, newNote, removeNote, refreshNote, loading, newNoteId } = useNotes(currentFolderId);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [autoFocus, setAutoFocus] = useState(false);
   const [maximized, setMaximized] = useState(false);
+
+  // Reset search when switching folders
+  useEffect(() => {
+    setSearchQuery("");
+    setSearchOpen(false);
+  }, [currentFolderId]);
+
+  const toggleSearch = useCallback(() => {
+    setSearchOpen((prev) => {
+      if (prev) setSearchQuery("");
+      return !prev;
+    });
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  }, []);
+
+  const [windowFocused, setWindowFocused] = useState(true);
 
   useEffect(() => {
     const win = getCurrentWindow();
@@ -54,7 +107,12 @@ export default function App() {
     update();
     const unlistenResize = win.onResized(update);
     const unlistenMove   = win.onMoved(update);
-    return () => { unlistenResize.then(fn => fn()); unlistenMove.then(fn => fn()); };
+    const unlistenFocus  = win.onFocusChanged(({ payload }) => setWindowFocused(payload));
+    return () => {
+      unlistenResize.then(fn => fn());
+      unlistenMove.then(fn => fn());
+      unlistenFocus.then(fn => fn());
+    };
   }, []);
 
   // --- Persisted font size ---
@@ -76,8 +134,30 @@ export default function App() {
     () => localStorage.getItem("sidebar-collapsed") === "true",
   );
   useEffect(() => { localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed)); }, [sidebarCollapsed]);
-
   const toggleSidebar = useCallback(() => setSidebarCollapsed((p) => !p), []);
+
+  // Ctrl+\ to toggle sidebar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "\\") { e.preventDefault(); toggleSidebar(); }
+      if (e.altKey && e.key === "s") { e.preventDefault(); toggleSidebar(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggleSidebar]);
+
+  // --- Persisted format bar visibility ---
+  const [formatBarVisible, setFormatBarVisible] = useState(
+    () => localStorage.getItem("format-bar-visible") !== "false",
+  );
+  useEffect(() => { localStorage.setItem("format-bar-visible", String(formatBarVisible)); }, [formatBarVisible]);
+  const toggleFormatBar = useCallback(() => setFormatBarVisible((p) => !p), []);
+
+  // --- Sidebar focused state (two-state selection) ---
+  const [sidebarFocused, setSidebarFocused] = useState(false);
+
+  // --- Note history (back/forward) ---
+  const { pushHistory, goBack, goForward, canGoBack, canGoForward } = useNoteHistory(setSelectedId);
 
   // --- Sidebar resize drag ---
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,7 +169,6 @@ export default function App() {
     const startX = e.clientX;
     const startW = sidebarWidthRef.current;
 
-    // Disable CSS transition during drag for instant response
     const sidebar = document.querySelector(".note-list-sidebar") as HTMLElement | null;
     if (sidebar) sidebar.style.transition = "none";
 
@@ -102,7 +181,6 @@ export default function App() {
       document.removeEventListener("mouseup", onUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      // Re-enable transition for collapse/expand animation
       if (sidebar) sidebar.style.transition = "";
     };
     document.addEventListener("mousemove", onMove);
@@ -111,22 +189,37 @@ export default function App() {
     document.body.style.userSelect = "none";
   }, []);
 
-  const { results: searchResults } = useSearch(searchQuery);
+  const { results: searchResults } = useSearch(searchQuery, currentFolderId);
   const displayedNotes = useMemo(() => searchResults ?? notes, [searchResults, notes]);
 
   const handleSelectNote = useCallback((id: string) => {
     setAutoFocus(false);
+    setSidebarFocused(true);
     setSelectedId(id);
-  }, [setSelectedId]);
+    pushHistory(id);
+  }, [setSelectedId, pushHistory]);
 
   const handleNewNote = useCallback(async () => {
     setAutoFocus(true);
-    await newNote();
-  }, [newNote]);
+    setSidebarFocused(false);
+    const id = await newNote();
+    if (id) pushHistory(id);
+  }, [newNote, pushHistory]);
+
+  const handleEditorFocus = useCallback(() => {
+    setSidebarFocused(false);
+  }, []);
 
   const noteContent = selectedNote?.content ?? "";
 
   const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
+
+  // Push initial note to history on load
+  useEffect(() => {
+    if (selectedId && !loading) {
+      pushHistory(selectedId);
+    }
+  }, [loading]);
 
   return (
     <div
@@ -141,28 +234,48 @@ export default function App() {
       <ResizeHandles maximized={maximized} />
       <TitleBar
         maximized={maximized}
-        onNew={handleNewNote}
+        focused={windowFocused}
         noteTitle={selectedNote?.title}
+        sidebarWidth={sidebarWidth}
+        sidebarCollapsed={sidebarCollapsed}
+        folders={folders}
+        currentFolderId={currentFolderId}
+        onSelectFolder={setCurrentFolderId}
+        onCreateFolder={handleCreateFolder}
+        onDeleteFolder={handleDeleteFolder}
+        onUpdateFolderIcon={handleUpdateFolderIcon}
+        onNewNote={handleNewNote}
+        onToggleSearch={toggleSearch}
+        onCloseSearch={closeSearch}
+        searchOpen={searchOpen}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <NoteList
           notes={displayedNotes}
           selectedId={selectedId}
+          newNoteId={newNoteId}
           onSelect={handleSelectNote}
           onDelete={removeNote}
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          sidebarFocused={sidebarFocused}
+          onToggleSidebar={toggleSidebar}
+          collapsed={sidebarCollapsed}
           style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
         />
 
         {/* Sidebar resize handle */}
-        {!sidebarCollapsed && (
-          <div
-            className="sidebar-resize-handle"
-            onMouseDown={handleSidebarResize}
-          />
-        )}
+        <div
+          className="sidebar-resize-handle"
+          onMouseDown={handleSidebarResize}
+          style={{
+            opacity: sidebarCollapsed ? 0 : 1,
+            pointerEvents: sidebarCollapsed ? "none" : "auto",
+            transition: "opacity 0.15s ease",
+          }}
+        />
 
         <main
           style={{
@@ -200,56 +313,52 @@ export default function App() {
               onFontSizeChange={setFontSize}
               autoFocus={autoFocus}
               onEditorReady={setEditorInstance}
+              formatBarVisible={formatBarVisible}
+              onToggleFormatBar={toggleFormatBar}
+              canGoBack={canGoBack}
+              canGoForward={canGoForward}
+              goBack={goBack}
+              goForward={goForward}
+              onEditorFocus={handleEditorFocus}
+              selectedNote={selectedNote}
+              editorInstance={editorInstance}
             />
           )}
         </main>
-      </div>
 
-      {/* Full-width bottom bar: toggle + format toolbar */}
-      <div style={{ display: "flex", flexShrink: 0 }}>
-        <div
-          style={{
-            width: sidebarCollapsed ? 41 : sidebarWidth,
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            background: sidebarCollapsed ? "#f5f5f5" : "#f8f8f8",
-            borderRight: "1px solid #e5e5e5",
-            transition: "width 0.2s ease, background 0.2s ease",
-          }}
-        >
+        {/* Expand sidebar button — bottom left when collapsed */}
+        {sidebarCollapsed && (
           <button
             onClick={toggleSidebar}
-            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-label="Expand sidebar"
             style={{
-              width: 40,
-              height: 44,
-              flexShrink: 0,
+              position: "absolute",
+              bottom: 8,
+              left: 12,
+              width: 28,
+              height: 28,
               border: "none",
               background: "transparent",
+              borderRadius: 6,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(0, 0, 0, 0.35)",
+              color: "rgba(0, 0, 0, 0.3)",
               transition: "background 0.1s, color 0.1s",
+              zIndex: 10,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
-              e.currentTarget.style.color = "rgba(0, 0, 0, 0.7)";
+              e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "rgba(0, 0, 0, 0.35)";
+              e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)";
             }}
           >
-            {sidebarCollapsed ? <PanelLeft size={15} /> : <PanelLeftClose size={15} />}
+            <PanelLeftOpen size={16} strokeWidth={1.5} />
           </button>
-        </div>
-        {editorInstance ? (
-          <FormatToolbar editor={editorInstance} />
-        ) : (
-          <div style={{ flex: 1, height: 44, background: "#ffffff" }} />
         )}
       </div>
     </div>

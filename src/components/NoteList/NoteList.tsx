@@ -1,24 +1,41 @@
 import { memo, useMemo, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Trash2, PanelLeftClose } from "lucide-react";
 import type { Note } from "../../lib/db";
+import { extractTitle } from "../../lib/extractTitle";
+import { timeAgo } from "../../lib/timeAgo";
 
 
 interface NoteItemProps {
   note: Note;
   isSelected: boolean;
+  isFirst: boolean;
+  isNew: boolean;
+  isSidebarFocused: boolean;
+  hideSeparator: boolean;
   onSelect: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
 }
 
-const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextMenu }: NoteItemProps) {
-  const preview = useMemo(() => {
-    const div = document.createElement("div");
-    div.innerHTML = note.content;
-    return div.textContent ?? "";
-  }, [note.content]);
+const NoteItem = memo(function NoteItem({ note, isSelected, isFirst, isNew, isSidebarFocused, hideSeparator, onSelect, onContextMenu }: NoteItemProps) {
+  const { title, preview } = useMemo(() => extractTitle(note.content), [note.content]);
+  const displayTitle = title || "New note";
+  const displayPreview = preview || "Start writing...";
+  const timestamp = useMemo(() => timeAgo(note.updated_at), [note.updated_at]);
+
+  const showLeftBar = isSelected && isSidebarFocused;
 
   return (
-    <li>
+    <li className={`note-item${isNew ? " note-slide-in" : ""}`} style={{ padding: "2px 8px" }}>
+      {/* Separator line — inset like Bear */}
+      {!isFirst && (
+        <div
+          style={{
+            height: 1,
+            background: hideSeparator ? "transparent" : "rgba(0, 0, 0, 0.16)",
+            margin: "0 10px 0 10px",
+          }}
+        />
+      )}
       <button
         onClick={() => onSelect(note.id)}
         onContextMenu={(e) => {
@@ -29,12 +46,17 @@ const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextM
         style={{
           width: "100%",
           textAlign: "left",
-          background: isSelected ? "rgba(99, 102, 241, 0.08)" : "transparent",
+          background: isSelected ? "rgba(0, 0, 0, 0.06)" : "transparent",
           border: "none",
-          borderLeft: isSelected ? "2.5px solid #6366F1" : "2.5px solid transparent",
+          borderRadius: 10,
           cursor: "pointer",
-          padding: "9px 14px 9px 13.5px",
-          transition: "background 0.1s",
+          padding: "10px 14px 10px 14px",
+          transition: "background 0.15s",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+          position: "relative",
+          overflow: "hidden",
         }}
         onMouseEnter={(e) => {
           if (!isSelected) e.currentTarget.style.background = "rgba(0, 0, 0, 0.03)";
@@ -43,40 +65,57 @@ const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextM
           if (!isSelected) e.currentTarget.style.background = "transparent";
         }}
       >
+        {/* Left accent bar — full height like Bear */}
+        {showLeftBar && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 5,
+              borderRadius: "2px 0 0 2px",
+              background: "#4A6FA5",
+              transition: "opacity 0.15s",
+            }}
+          />
+        )}
+        {/* Title */}
         <div
           style={{
-            fontSize: "13px",
+            fontSize: "15px",
+            fontWeight: 700,
+            color: "#1a1a1a",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            display: "flex",
-            gap: "6px",
-            alignItems: "baseline",
           }}
         >
-          <span
-            style={{
-              fontWeight: 500,
-              flexShrink: 0,
-              color: isSelected ? "#6366F1" : "rgba(0, 0, 0, 0.85)",
-            }}
-          >
-            {note.title || "New note"}
-          </span>
-          {preview && (
-            <span
-              style={{
-                color: "rgba(0, 0, 0, 0.33)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontSize: "12px",
-                fontWeight: 400,
-              }}
-            >
-              {preview}
-            </span>
-          )}
+          {displayTitle}
+        </div>
+        {/* Preview */}
+        <div
+          style={{
+            fontSize: "15px",
+            color: "rgba(0, 0, 0, 0.45)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontWeight: 500,
+          }}
+        >
+          {displayPreview}
+        </div>
+        {/* Timestamp */}
+        <div
+          style={{
+            fontSize: "12px",
+            color: "rgba(0, 0, 0, 0.28)",
+            fontWeight: 400,
+            marginTop: "1px",
+          }}
+        >
+          {timestamp}
         </div>
       </button>
     </li>
@@ -86,14 +125,17 @@ const NoteItem = memo(function NoteItem({ note, isSelected, onSelect, onContextM
 interface NoteListProps {
   notes: Note[];
   selectedId: string | null;
+  newNoteId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   searchQuery: string;
-  onSearchChange: (q: string) => void;
+  sidebarFocused: boolean;
+  onToggleSidebar: () => void;
+  collapsed: boolean;
   style?: React.CSSProperties;
 }
 
-export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, onDelete, searchQuery, onSearchChange, style }: NoteListProps) {
+export const NoteList = memo(function NoteList({ notes, selectedId, newNoteId, onSelect, onDelete, searchQuery, sidebarFocused, onToggleSidebar, collapsed, style }: NoteListProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const handleContextMenu = useMemo(
@@ -103,49 +145,12 @@ export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, on
 
   return (
     <aside
-      className="note-list-sidebar"
+      className={`note-list-sidebar${collapsed ? " collapsed" : ""}`}
       style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", ...style }}
       onClick={() => setContextMenu(null)}
     >
-      {/* Search */}
-      <div style={{ padding: "10px 10px 10px" }}>
-        <div style={{ position: "relative" }}>
-          <Search
-            size={12}
-            style={{
-              position: "absolute",
-              left: "9px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "rgba(0, 0, 0, 0.25)",
-              pointerEvents: "none",
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") onSearchChange(""); }}
-            className="sidebar-search"
-            style={{
-              width: "100%",
-              padding: "6px 10px 6px 26px",
-              fontSize: "12.5px",
-              borderRadius: "8px",
-              border: "1px solid rgba(0, 0, 0, 0.06)",
-              background: "rgba(0, 0, 0, 0.03)",
-              outline: "none",
-              fontFamily: "inherit",
-              color: "rgba(0, 0, 0, 0.8)",
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-      </div>
-
       {/* Note list */}
-      <ul style={{ listStyle: "none", padding: "2px 0", overflowY: "auto", flex: 1, minHeight: 0 }}>
+      <ul style={{ listStyle: "none", padding: "8px 0", overflowY: "auto", flex: 1, minHeight: 0 }}>
         {notes.length === 0 && !searchQuery && (
           <li style={{ padding: "32px 16px", textAlign: "center", color: "rgba(0, 0, 0, 0.25)", fontSize: "12.5px" }}>
             No notes yet
@@ -156,16 +161,60 @@ export const NoteList = memo(function NoteList({ notes, selectedId, onSelect, on
             No results for &ldquo;{searchQuery}&rdquo;
           </li>
         )}
-        {notes.map((note) => (
-          <NoteItem
-            key={note.id}
-            note={note}
-            isSelected={selectedId === note.id}
-            onSelect={onSelect}
-            onContextMenu={handleContextMenu}
-          />
-        ))}
+        {notes.map((note, i) => {
+          const isSelected = selectedId === note.id;
+          const prevSelected = i > 0 && selectedId === notes[i - 1].id;
+          return (
+            <NoteItem
+              key={note.id}
+              note={note}
+              isSelected={isSelected}
+              isFirst={i === 0}
+              isNew={note.id === newNoteId}
+              isSidebarFocused={sidebarFocused}
+              hideSeparator={isSelected || prevSelected}
+              onSelect={onSelect}
+              onContextMenu={handleContextMenu}
+            />
+          );
+        })}
       </ul>
+
+      {/* Sidebar collapse button — bottom left */}
+      <div
+        style={{
+          padding: "8px 12px",
+          flexShrink: 0,
+        }}
+      >
+        <button
+          onClick={onToggleSidebar}
+          aria-label="Collapse sidebar"
+          style={{
+            width: 28,
+            height: 28,
+            border: "none",
+            background: "transparent",
+            borderRadius: 6,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "rgba(0, 0, 0, 0.3)",
+            transition: "background 0.1s, color 0.1s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(0, 0, 0, 0.05)";
+            e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)";
+          }}
+        >
+          <PanelLeftClose size={16} strokeWidth={1.5} />
+        </button>
+      </div>
 
       {contextMenu && (
         <>

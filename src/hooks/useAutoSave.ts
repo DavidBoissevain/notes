@@ -1,6 +1,8 @@
 // Debounced auto-save: writes to SQLite after `delay`ms of inactivity, only when isDirty is true.
+// Derives title from content on every save (Bear-style: title = first H1 or first text line).
 import { useEffect, useRef } from "react";
-import { updateNoteContent } from "../lib/db";
+import { updateNote } from "../lib/db";
+import { extractTitle } from "../lib/extractTitle";
 
 export function useAutoSave(
   id: string | null,
@@ -16,7 +18,8 @@ export function useAutoSave(
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       if (!isDirty.current) return;
-      await updateNoteContent(id, content);
+      const { title } = extractTitle(content);
+      await updateNote(id, title || "Untitled", content);
       onSaved(id, content);
     }, delay);
     return () => {

@@ -1,8 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource/poppins/400.css";
-@import "@fontsource/poppins/500.css";
-@import "@fontsource/poppins/600.css";
-@import "@fontsource/poppins/700.css";
 
 * {
   box-sizing: border-box;
@@ -11,7 +7,7 @@
 }
 
 :root {
-  font-family: "Poppins", system-ui, sans-serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -53,15 +49,38 @@ body::-webkit-scrollbar {
 .note-list-sidebar {
   flex-shrink: 0;
   overflow: hidden;
-  background: #f8f8f8;
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  border-right: 1px solid rgba(0, 0, 0, 0.16);
   user-select: none;
   -webkit-user-select: none;
-  transition: width 0.2s ease;
+  transition: width 0.2s ease, border-color 0.2s ease;
+}
+
+.note-list-sidebar.collapsed {
+  border-right-color: transparent;
+}
+
+/* New note slide-in animation */
+@keyframes note-slide-in {
+  from {
+    max-height: 0;
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    max-height: 100px;
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.note-slide-in {
+  animation: note-slide-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
 }
 
 .note-list-sidebar ul::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.06);
+  background: transparent;
   border-radius: 3px;
 }
 
@@ -75,6 +94,39 @@ body::-webkit-scrollbar {
 
 .sidebar-search::placeholder {
   color: rgba(0, 0, 0, 0.3);
+}
+
+/* Search / folder crossfade transitions */
+.titlebar-swap {
+  display: grid;
+}
+
+.titlebar-swap > * {
+  grid-area: 1 / 1;
+  transition: clip-path 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s ease;
+}
+
+.titlebar-folder {
+  clip-path: inset(0 0 0 0);
+  opacity: 1;
+}
+
+.titlebar-folder.hidden {
+  clip-path: inset(0 100% 0 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.titlebar-search {
+  clip-path: inset(0 0 0 0);
+  opacity: 1;
+}
+
+.titlebar-search.hidden {
+  clip-path: inset(0 0 0 100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Sidebar resize handle */
@@ -146,36 +198,17 @@ body::-webkit-scrollbar {
 .ProseMirror {
   outline: none !important;
   min-height: 100%;
-  padding: 24px 40px 70vh 12px;
+  padding: 24px 40px 70vh 40px;
   margin: 0;
   /* line-height controlled via inline style in Editor.tsx for integer-pixel rendering */
-  font-family: "Poppins", system-ui, sans-serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   color: #1c1c1e;
-  font-weight: 400;
+  font-weight: 450;
   white-space: pre-wrap;
   tab-size: 8;
-  caret-color: #6366F1;
+  caret-color: #4A6FA5;
 }
 
-/* Line-number gutter */
-.line-gutter {
-  width: 40px;
-  flex-shrink: 0;
-  background: #f5f5f5;
-  border-right: 1px solid #e5e5e5;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.line-num {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 8px;
-  font-size: 11px;
-  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
-  color: rgba(0, 0, 0, 0.22);
-}
 
 /* Placeholder text on empty editor */
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -193,10 +226,36 @@ body::-webkit-scrollbar {
 .ProseMirror h1,
 .ProseMirror h2,
 .ProseMirror h3 {
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.3;
   margin-top: 0;
   margin-bottom: 0;
+  position: relative;
+}
+
+/* Heading gutter indicator — Bear-style: three lines + integrated level number */
+.ProseMirror .heading-active::before {
+  content: "";
+  position: absolute;
+  bottom: 0.25em;
+  right: calc(100% + 8px);
+  width: 20px;
+  height: 16px;
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+}
+
+.ProseMirror .heading-active-1::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='16' fill='none'%3E%3Crect y='1' width='9' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='5.5' width='13' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='10' width='11' height='2' rx='1' fill='%23b0b0b0'/%3E%3Ctext x='14' y='15' font-family='system-ui,sans-serif' font-size='8' font-weight='600' fill='%23a0a0a0'%3E1%3C/text%3E%3C/svg%3E");
+}
+
+.ProseMirror .heading-active-2::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='16' fill='none'%3E%3Crect y='1' width='9' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='5.5' width='13' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='10' width='11' height='2' rx='1' fill='%23b0b0b0'/%3E%3Ctext x='14' y='15' font-family='system-ui,sans-serif' font-size='8' font-weight='600' fill='%23a0a0a0'%3E2%3C/text%3E%3C/svg%3E");
+}
+
+.ProseMirror .heading-active-3::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='16' fill='none'%3E%3Crect y='1' width='9' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='5.5' width='13' height='2' rx='1' fill='%23b0b0b0'/%3E%3Crect y='10' width='11' height='2' rx='1' fill='%23b0b0b0'/%3E%3Ctext x='14' y='15' font-family='system-ui,sans-serif' font-size='8' font-weight='600' fill='%23a0a0a0'%3E3%3C/text%3E%3C/svg%3E");
 }
 
 .ProseMirror h1 { font-size: 1.75em; }
@@ -211,7 +270,7 @@ body::-webkit-scrollbar {
   font-size: 0.875em;
   background: rgba(0, 0, 0, 0.06);
   padding: 0.15em 0.35em;
-  border-radius: 4px;
+  border-radius: 16px;
 }
 
 .ProseMirror pre {
@@ -294,9 +353,41 @@ body::-webkit-scrollbar {
 
 .ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"] {
   cursor: pointer;
-  width: 0.875em;
-  height: 0.875em;
+  width: 1.15em;
+  height: 1.15em;
   margin: 0;
+  border-radius: 35%;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  background: #ffffff;
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"]:hover {
+  border-color: #4A6FA5;
+  box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
+}
+
+.ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"]:checked {
+  background: #4A6FA5;
+  border-color: #4A6FA5;
+  box-shadow: 0 1px 4px rgba(74, 111, 165, 0.3);
+}
+
+.ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"]:checked::after {
+  content: "";
+  display: block;
+  width: 0.3em;
+  height: 0.55em;
+  border: solid white;
+  border-width: 0 1.8px 1.8px 0;
+  transform: rotate(45deg);
+  margin-bottom: 1.5px;
 }
 
 .ProseMirror ul[data-type="taskList"] li > div {
@@ -319,6 +410,68 @@ body::-webkit-scrollbar {
   padding-left: 1em;
   margin: 1em 0;
   color: rgba(0, 0, 0, 0.55);
+}
+
+/* Tables */
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1em 0;
+  overflow: hidden;
+}
+
+.ProseMirror td,
+.ProseMirror th {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.5em 0.75em;
+  vertical-align: top;
+  position: relative;
+  min-width: 80px;
+}
+
+.ProseMirror th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(74, 111, 165, 0.12);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background: #4A6FA5;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
+/* Images */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+  display: block;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #4A6FA5;
+  outline-offset: 2px;
 }
 
 /* Links */
@@ -366,4 +519,15 @@ body::-webkit-scrollbar {
 .bubble-menu button.is-active {
   background: rgba(99, 102, 241, 0.1);
   color: #6366F1;
+}
+
+
+/* Editor toolbar (top-right floating) — auto-hide transitions */
+.editor-toolbar {
+  transition: opacity 0.2s ease;
+}
+
+.editor-toolbar.hidden {
+  opacity: 0;
+  pointer-events: none;
 }

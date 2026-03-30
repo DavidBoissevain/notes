@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Check, Download, RefreshCw, Loader2, CircleCheck } from "lucide-react";
 import { onUpdateStatus, checkForUpdates, installUpdate, type UpdateStatus } from "../../lib/updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { AppIcon, ICON_COLORS } from "../AppIcon";
 import type { Folder as FolderType } from "../../lib/db";
 import { TRASH_FOLDER_ID } from "../../lib/db";
@@ -825,9 +826,11 @@ function UpdateRow({ status }: { status: UpdateStatus }) {
   if (status.state === "ready") {
     return (
       <SettingsRow
-        label="Restart to finish update"
+        label="Restart to update"
         icon={<CircleCheck size={14} strokeWidth={1.5} style={{ color: "var(--accent-blue)" }} />}
-        action={null}
+        action={
+          <SettingsButton label="Restart" onClick={() => relaunch()} />
+        }
       />
     );
   }

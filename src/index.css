@@ -169,7 +169,7 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: var(--bg-primary);
   scrollbar-width: none;
 }
 
@@ -228,6 +228,12 @@ body::-webkit-scrollbar {
 .note-slide-in {
   animation: note-slide-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
+}
+
+/* Spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Toast slide-in animation */

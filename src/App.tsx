@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, PhysicalSize, PhysicalPosition } from "@tauri-apps/api/window";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
@@ -171,10 +171,45 @@ export default function App() {
     };
   }, []);
 
+  // Restore saved window size/position on startup, then show window
+  useEffect(() => {
+    const win = getCurrentWindow();
+    (async () => {
+      const saved = localStorage.getItem("window-geometry");
+      if (saved) {
+        try {
+          const { width, height, x, y, isMaximized } = JSON.parse(saved);
+          if (isMaximized) {
+            await win.maximize();
+          } else {
+            if (typeof width === "number" && typeof height === "number") {
+              await win.setSize(new PhysicalSize(width, height));
+            }
+            if (typeof x === "number" && typeof y === "number") {
+              await win.setPosition(new PhysicalPosition(x, y));
+            }
+          }
+        } catch { /* ignore corrupt data */ }
+      }
+      await win.show();
+    })();
+  }, []);
+
   // Flush unsaved changes before window closes
   useEffect(() => {
     const promise = getCurrentWindow().onCloseRequested(async (event) => {
       event.preventDefault();
+      try {
+        const win = getCurrentWindow();
+        const isMax = await win.isMaximized();
+        const size = await win.innerSize();
+        const pos = await win.outerPosition();
+        localStorage.setItem("window-geometry", JSON.stringify({
+          width: size.width, height: size.height,
+          x: pos.x, y: pos.y,
+          isMaximized: isMax,
+        }));
+      } catch { /* best effort */ }
       await flushPendingSave();
       getCurrentWindow().destroy();
     });

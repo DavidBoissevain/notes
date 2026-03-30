@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Check } from "lucide-react";
+import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Check, Download, RefreshCw, Loader2, CircleCheck } from "lucide-react";
+import { onUpdateStatus, checkForUpdates, installUpdate, type UpdateStatus } from "../../lib/updater";
 import { AppIcon, ICON_COLORS } from "../AppIcon";
 import type { Folder as FolderType } from "../../lib/db";
 import { TRASH_FOLDER_ID } from "../../lib/db";
@@ -659,6 +660,9 @@ function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChang
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle" });
+
+  useEffect(() => onUpdateStatus(setUpdateStatus), []);
 
   useEffect(() => {
     if (!open) return;
@@ -780,9 +784,129 @@ function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChang
               </button>
             }
           />
+
+          <div style={{ height: 1, background: "var(--border-light)", margin: "4px 6px" }} />
+
+          {/* Update row */}
+          <UpdateRow status={updateStatus} />
         </div>
       )}
     </div>
+  );
+}
+
+function UpdateRow({ status }: { status: UpdateStatus }) {
+  if (status.state === "downloading") {
+    return (
+      <SettingsRow
+        label={`Updating... ${status.progress}%`}
+        icon={<Loader2 size={14} strokeWidth={1.5} style={{ animation: "spin 1s linear infinite" }} />}
+        action={
+          <div style={{
+            width: 60,
+            height: 4,
+            borderRadius: 2,
+            background: "var(--bg-active)",
+            overflow: "hidden",
+          }}>
+            <div style={{
+              width: `${status.progress}%`,
+              height: "100%",
+              background: "var(--accent-blue)",
+              borderRadius: 2,
+              transition: "width 0.2s ease",
+            }} />
+          </div>
+        }
+      />
+    );
+  }
+
+  if (status.state === "ready") {
+    return (
+      <SettingsRow
+        label="Restart to finish update"
+        icon={<CircleCheck size={14} strokeWidth={1.5} style={{ color: "var(--accent-blue)" }} />}
+        action={null}
+      />
+    );
+  }
+
+  if (status.state === "available") {
+    return (
+      <SettingsRow
+        label={`v${status.version} available`}
+        icon={<Download size={14} strokeWidth={1.5} style={{ color: "var(--accent-blue)" }} />}
+        action={
+          <SettingsButton label="Install" onClick={installUpdate} />
+        }
+      />
+    );
+  }
+
+  if (status.state === "up-to-date") {
+    return (
+      <SettingsRow
+        label="Up to date"
+        icon={<CircleCheck size={14} strokeWidth={1.5} style={{ color: "var(--accent-blue)" }} />}
+        action={null}
+      />
+    );
+  }
+
+  if (status.state === "error") {
+    return (
+      <SettingsRow
+        label="Update failed"
+        icon={<AlertTriangle size={14} strokeWidth={1.5} style={{ color: "var(--accent-red)" }} />}
+        action={
+          <SettingsButton label="Retry" onClick={checkForUpdates} />
+        }
+      />
+    );
+  }
+
+  // idle or checking
+  return (
+    <SettingsRow
+      label="Updates"
+      icon={<RefreshCw size={14} strokeWidth={1.5} style={status.state === "checking" ? { animation: "spin 1s linear infinite" } : undefined} />}
+      action={
+        <SettingsButton
+          label={status.state === "checking" ? "Checking..." : "Check"}
+          onClick={status.state === "checking" ? undefined : checkForUpdates}
+        />
+      }
+    />
+  );
+}
+
+function SettingsButton({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        border: "none",
+        background: "var(--bg-active)",
+        borderRadius: 6,
+        padding: "3px 10px",
+        fontSize: 12,
+        fontWeight: 550,
+        color: "var(--text-primary)",
+        cursor: onClick ? "pointer" : "default",
+        fontFamily: "inherit",
+        transition: "background 0.1s",
+        opacity: onClick ? 1 : 0.6,
+      }}
+      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.background = "var(--bg-hover-strong)"; }}
+      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.background = "var(--bg-active)"; }}
+    >
+      {label}
+    </button>
   );
 }
 

@@ -790,6 +790,11 @@ function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChang
 
           {/* Update row */}
           <UpdateRow status={updateStatus} />
+
+          {/* Version */}
+          <div style={{ padding: "4px 10px 6px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+            v{__APP_VERSION__}
+          </div>
         </div>
       )}
     </div>

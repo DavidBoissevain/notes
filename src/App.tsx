@@ -53,10 +53,6 @@ export default function App() {
   useEffect(() => { applyTheme(theme); storeTheme(theme); }, [theme]);
   const toggleTheme = useCallback(() => setTheme((t) => t === "light" ? "dark" : "light"), []);
 
-  // --- Icon color ---
-  const [iconColor, setIconColor] = useState(() => localStorage.getItem("icon-color") || "#4A6FA5");
-  useEffect(() => { localStorage.setItem("icon-color", iconColor); }, [iconColor]);
-
   // --- Folder state ---
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState(() => {
@@ -458,8 +454,6 @@ export default function App() {
         onMoveNoteToFolder={handleMoveNoteToFolder}
         isTrash={isTrash}
         editorTyping={editorTyping}
-        iconColor={iconColor}
-        onIconColorChange={setIconColor}
       />
 
       <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>

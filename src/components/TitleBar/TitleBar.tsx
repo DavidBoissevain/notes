@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Check, Download, RefreshCw, Loader2, CircleCheck } from "lucide-react";
+import { ChevronDown, SquarePen, Search, X, Plus, Trash2, AlertTriangle, Moon, Sun, Globe, Settings, Download, RefreshCw, Loader2, CircleCheck } from "lucide-react";
 import { onUpdateStatus, checkForUpdates, installUpdate, type UpdateStatus } from "../../lib/updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { AppIcon, ICON_COLORS } from "../AppIcon";
+import { AppIcon } from "../AppIcon";
 import type { Folder as FolderType } from "../../lib/db";
 import { TRASH_FOLDER_ID } from "../../lib/db";
 import { getFolderIcon, FOLDER_ICONS } from "../../lib/folderIcons";
@@ -49,8 +49,6 @@ interface TitleBarProps {
   onMoveNoteToFolder: (noteId: string, folderId: string) => void;
   isTrash: boolean;
   editorTyping: boolean;
-  iconColor: string;
-  onIconColorChange: (color: string) => void;
 }
 
 export function TitleBar({
@@ -77,8 +75,6 @@ export function TitleBar({
   onMoveNoteToFolder,
   isTrash,
   editorTyping,
-  iconColor,
-  onIconColorChange,
 }: TitleBarProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -627,7 +623,7 @@ export function TitleBar({
 
       {/* Right: settings + window controls */}
       <div style={{ display: "flex", alignItems: "center" }}>
-        <SettingsMenu theme={theme} onToggleTheme={onToggleTheme} faded={editorTyping} iconColor={iconColor} onIconColorChange={onIconColorChange} />
+        <SettingsMenu theme={theme} onToggleTheme={onToggleTheme} faded={editorTyping} />
 
         <div style={{ width: 4 }} />
 
@@ -657,7 +653,7 @@ export function TitleBar({
   );
 }
 
-function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChange }: { theme: Theme; onToggleTheme: () => void; faded?: boolean; iconColor: string; onIconColorChange: (c: string) => void }) {
+function SettingsMenu({ theme, onToggleTheme, faded }: { theme: Theme; onToggleTheme: () => void; faded?: boolean }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -722,35 +718,10 @@ function SettingsMenu({ theme, onToggleTheme, faded, iconColor, onIconColorChang
             minWidth: 180,
           }}
         >
-          {/* Icon preview */}
-          <div style={{ display: "flex", justifyContent: "center", padding: "12px 10px 8px" }}>
-            <AppIcon color={iconColor} size={64} />
-          </div>
-
-          {/* Color swatches */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 10px 10px", justifyContent: "center" }}>
-            {ICON_COLORS.map((c) => (
-              <button
-                key={c.id}
-                title={c.label}
-                onClick={() => onIconColorChange(c.hex)}
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  border: iconColor === c.hex ? "2px solid var(--text-primary)" : "2px solid transparent",
-                  background: c.hex,
-                  cursor: "pointer",
-                  padding: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "border-color 0.1s, transform 0.1s",
-                }}
-              >
-                {iconColor === c.hex && <Check size={12} strokeWidth={2.5} color="white" />}
-              </button>
-            ))}
+          {/* App name */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
+            <AppIcon size={20} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Fyka Notes</span>
           </div>
 
           <div style={{ height: 1, background: "var(--border-light)", margin: "0 6px 4px" }} />

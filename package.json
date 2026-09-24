@@ -1,13 +1,14 @@
 {
   "name": "notes",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons": "tauri icon app-icon.svg && node -e \"for (const p of ['android','ios','64x64.png']) require('fs').rmSync('src-tauri/icons/'+p,{recursive:true,force:true})\""
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "^5.2.8",
@@ -47,7 +48,6 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
-    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"

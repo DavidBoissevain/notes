@@ -37,3 +37,16 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ""
+
+      # The versioned installer name changes every release, so also attach a
+      # copy under a fixed name. The website links to
+      # releases/latest/download/FykaNotes-setup.exe, which GitHub resolves to
+      # this file on the newest published release.
+      - name: Upload installer under a fixed name
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          Copy-Item $exe.FullName FykaNotes-setup.exe
+          gh release upload "${{ github.ref_name }}" FykaNotes-setup.exe --clobber

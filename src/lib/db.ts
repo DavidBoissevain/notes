@@ -74,6 +74,14 @@ async function initSchema(db: Database) {
     `INSERT OR IGNORE INTO folders (id, name, icon, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
     [TODO_FOLDER_ID, "Todo", "todo", now, now]
   );
+
+  // Recover notes stranded in a folder that no longer exists (older versions
+  // restored trashed notes into their deleted folder)
+  await db.execute(
+    `UPDATE notes SET folder_id = $1
+     WHERE folder_id != $2 AND folder_id NOT IN (SELECT id FROM folders)`,
+    [DEFAULT_FOLDER_ID, TRASH_FOLDER_ID]
+  );
 }
 
 export interface Folder {
@@ -234,9 +242,11 @@ export async function softDeleteNotes(ids: string[]): Promise<void> {
 export async function restoreNote(id: string): Promise<void> {
   const db = await getDb();
   const now = Date.now();
-  // Restore to prev_folder_id, or default folder
+  // Restore to prev_folder_id, or default folder if that folder was deleted
   const rows = await db.select<{ prev_folder_id: string | null }[]>(
-    "SELECT prev_folder_id FROM notes WHERE id = $1",
+    `SELECT n.prev_folder_id FROM notes n
+     JOIN folders f ON f.id = n.prev_folder_id
+     WHERE n.id = $1`,
     [id]
   );
   const targetFolder = rows[0]?.prev_folder_id || DEFAULT_FOLDER_ID;

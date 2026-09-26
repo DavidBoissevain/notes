@@ -294,8 +294,9 @@ export function Editor({
   onCopyMarkdown,
 }: EditorProps) {
   const lastNoteId = useRef<string | null>(null);
-  const [bodyContent, setBodyContent] = useState(content);
-  const isDirty = useRef(false);
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
+  const { schedule: scheduleSave, flush: flushSave } = useAutoSave(onSaved);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -412,9 +413,7 @@ export function Editor({
     editable: !readOnly,
     editorProps: { attributes: { spellcheck: "false" } },
     onUpdate({ editor }) {
-      const html = editor.getHTML();
-      isDirty.current = true;
-      setBodyContent(html);
+      if (noteIdRef.current) scheduleSave(noteIdRef.current, editor.getHTML());
       onEditorTyping?.();
     },
   });
@@ -432,8 +431,8 @@ export function Editor({
   useEffect(() => {
     if (noteId === lastNoteId.current) return;
     lastNoteId.current = noteId;
-    isDirty.current = false;
-    setBodyContent(content);
+    // Save the previous note's last edits before loading the next one
+    flushSave();
     if (autoFocus && !content && !readOnly) {
       editor?.commands.setContent("<h1></h1>", { emitUpdate: false });
       editor?.commands.focus("start");
@@ -442,8 +441,6 @@ export function Editor({
       if (autoFocus && !readOnly) editor?.commands.focus("end");
     }
   }, [noteId]);
-
-  useAutoSave(noteId, bodyContent, onSaved, isDirty);
 
   const counts = useEditorState({
     editor,

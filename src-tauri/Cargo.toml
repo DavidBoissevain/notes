@@ -1,6 +1,6 @@
 [package]
 name = "notes"
-version = "0.2.4"
+version = "0.2.5"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -17,8 +17,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Dev-only AI interaction bridge. Enabled by `npm run tauri:dev`; never part of
+# a release build.
+mcp = ["dep:tauri-plugin-mcp"]
+
 [dependencies]
-tauri-plugin-mcp = { git = "https://github.com/P3GLEG/tauri-plugin-mcp" }
+tauri-plugin-mcp = { git = "https://github.com/P3GLEG/tauri-plugin-mcp", rev = "49fbecb2dcfac7f5739a79ae22bcf9452dd8d228", optional = true }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }

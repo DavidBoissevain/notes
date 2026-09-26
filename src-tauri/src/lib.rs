@@ -21,7 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![backup_database]);
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "mcp"))]
     {
         builder = builder.plugin(tauri_plugin_mcp::init_with_config(
             tauri_plugin_mcp::PluginConfig::new("Notes".to_string())

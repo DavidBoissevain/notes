@@ -33,6 +33,7 @@ Requires [Node.js](https://nodejs.org/) (20+) and [Rust](https://rustup.rs/).
 ```bash
 npm install
 npm run tauri dev       # development
+npm run tauri:dev       # development + MCP bridge for AI tooling (port 4000)
 npm run tauri build     # production build
 ```
 

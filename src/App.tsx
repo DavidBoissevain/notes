@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow, PhysicalSize, PhysicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow, availableMonitors, PhysicalSize, PhysicalPosition } from "@tauri-apps/api/window";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { NoteList } from "./components/NoteList/NoteList";
@@ -18,6 +18,17 @@ const RESIZE_SIZE = 12;
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 280;
+
+// True when enough of the window's top edge (the titlebar) lands on a monitor
+// to grab it. Guards against positions from a disconnected monitor, or the
+// -32000 placeholder Windows reports for minimized windows.
+async function isOnScreen(x: number, y: number, width: number): Promise<boolean> {
+  const monitors = await availableMonitors();
+  return monitors.some(({ position: m, size }) =>
+    x + width - 100 > m.x && x + 100 < m.x + size.width &&
+    y >= m.y && y + 40 < m.y + size.height
+  );
+}
 
 type ResizeDirection = "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest";
 
@@ -181,8 +192,10 @@ export default function App() {
             if (typeof width === "number" && typeof height === "number") {
               await win.setSize(new PhysicalSize(width, height));
             }
-            if (typeof x === "number" && typeof y === "number") {
+            if (typeof x === "number" && typeof y === "number" && await isOnScreen(x, y, width ?? 0)) {
               await win.setPosition(new PhysicalPosition(x, y));
+            } else {
+              await win.center();
             }
           }
         } catch { /* ignore corrupt data */ }
@@ -197,14 +210,18 @@ export default function App() {
       event.preventDefault();
       try {
         const win = getCurrentWindow();
-        const isMax = await win.isMaximized();
-        const size = await win.innerSize();
-        const pos = await win.outerPosition();
-        localStorage.setItem("window-geometry", JSON.stringify({
-          width: size.width, height: size.height,
-          x: pos.x, y: pos.y,
-          isMaximized: isMax,
-        }));
+        // A minimized window reports a placeholder size and position — keep
+        // the geometry saved from before instead.
+        if (!(await win.isMinimized())) {
+          const isMax = await win.isMaximized();
+          const size = await win.innerSize();
+          const pos = await win.outerPosition();
+          localStorage.setItem("window-geometry", JSON.stringify({
+            width: size.width, height: size.height,
+            x: pos.x, y: pos.y,
+            isMaximized: isMax,
+          }));
+        }
       } catch { /* best effort */ }
       await flushPendingSave();
       getCurrentWindow().destroy();

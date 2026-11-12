@@ -80,24 +80,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: ${{ needs.check.outputs.tag }}
-          releaseName: "Notes ${{ needs.check.outputs.tag }}"
+          releaseName: "SprintNotes ${{ needs.check.outputs.tag }}"
           releaseBody: "See the assets below to download the installer for your platform."
           releaseDraft: true
           prerelease: false
           args: ""
 
-      # The versioned installer name changes every release, so also attach a
-      # copy under a fixed name. The website links to
-      # releases/latest/download/FykaNotes-setup.exe, which GitHub resolves to
-      # this file on the newest published release.
-      - name: Upload installer under a fixed name
+      # The versioned installer name changes every release, so also attach
+      # copies under fixed names. The website links to
+      # releases/latest/download/SprintNotes-setup.exe, which GitHub resolves
+      # to this file on the newest published release. FykaNotes-setup.exe is
+      # the name from before the rename; older links (Product Hunt,
+      # AlternativeTo) still point at it.
+      - name: Upload installer under fixed names
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          Copy-Item $exe.FullName SprintNotes-setup.exe
           Copy-Item $exe.FullName FykaNotes-setup.exe
-          gh release upload "${{ needs.check.outputs.tag }}" FykaNotes-setup.exe --clobber
+          gh release upload "${{ needs.check.outputs.tag }}" SprintNotes-setup.exe FykaNotes-setup.exe --clobber
 
       # Publishing creates the git tag and makes this the latest release, which
       # is what the in-app updater and the website download link read.

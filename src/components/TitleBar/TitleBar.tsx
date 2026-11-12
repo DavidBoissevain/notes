@@ -721,7 +721,7 @@ function SettingsMenu({ theme, onToggleTheme, faded }: { theme: Theme; onToggleT
           {/* App name */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
             <AppIcon size={20} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Fyka Notes</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>SprintNotes</span>
           </div>
 
           <div style={{ height: 1, background: "var(--border-light)", margin: "0 6px 4px" }} />
